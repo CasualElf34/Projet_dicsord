@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Likoo</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Servers bar -->
+<div class="servers-bar">
+  <div class="logo tooltip" data-tip="Likoo" onclick="goHome()">L</div>
+  <div class="sep"></div>
+  <div id="serversList"></div>
+  <div class="sep"></div>
+  <div class="add-server" onclick="openCreateServer()" title="Créer un serveur">+</div>
+</div>
+
+<!-- Channels bar -->
+<div class="channels-bar">
+  <div class="server-header" id="serverHeader">
+    <h2 id="serverName">Messages Privés</h2>
+    <span>⚙</span>
+  </div>
+  <div class="search-bar">
+    <span style="color:var(--text3);font-size:14px">🔍</span>
+    <input type="text" placeholder="Rechercher...">
+  </div>
+  <div id="channelsList" style="flex:1;overflow-y:auto;padding:4px 0"></div>
+  <div class="user-panel">
+    <div class="user-avatar-sm" id="myAvatar">
+      <div class="status-dot"></div>
+    </div>
+    <div class="user-info">
+      <div class="name" id="myName">Moi</div>
+      <div class="tag" id="myTag">#0000</div>
+    </div>
+    <div class="panel-btns">
+      <button class="panel-btn" title="Micro" onclick="toggleMic(this)">🎙</button>
+      <button class="panel-btn" title="Casque" onclick="toggleDeaf(this)">🎧</button>
+      <button class="panel-btn" onclick="openSettings()">⚙</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="main">
+  <div class="chat-header">
+    <span style="color:var(--accent);font-size:18px">#</span>
+    <span class="ch-name" id="channelName">général</span>
+    <span class="ch-desc" id="channelDesc">Bienvenue sur Likoo !</span>
+    <div class="header-actions">
+      <button class="panel-btn tooltip" data-tip="Membres" onclick="toggleMembers()">👥</button>
+      <button class="panel-btn tooltip" data-tip="Épingles">📌</button>
+      <button class="panel-btn tooltip" data-tip="Rechercher">🔍</button>
+      <button class="panel-btn tooltip" data-tip="Boîte de réception">🔔</button>
+    </div>
+  </div>
+  <div class="messages" id="messages"></div>
+  <div style="position:relative">
+    <div class="emoji-picker" id="emojiPicker"></div>
+    <div class="typing" id="typingIndicator"></div>
+    <div class="input-area">
+      <div class="input-box">
+        <button class="input-btn" onclick="document.getElementById('fileInput').click()" title="Joindre">📎</button>
+        <input type="file" id="fileInput" style="display:none" onchange="handleFile(this)">
+        <textarea id="msgInput" placeholder="Message #général..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);simulateTyping()"></textarea>
+        <button class="input-btn" onclick="toggleEmoji()" title="Emoji">😊</button>
+        <button class="send-btn" onclick="sendMessage()">➤</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Members bar -->
+<div class="members-bar" id="membersBar">
+  <div id="membersList"></div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="setupModal">
+  <div class="modal">
+    <h2>👋 Bienvenue sur Likoo !</h2>
+    <p>Créez votre compte pour commencer à discuter avec vos amis.</p>
+    <input type="text" id="setupName" placeholder="Votre nom d'affichage" maxlength="32">
+    <input type="text" id="setupTag" placeholder="Tag (ex: 1234)" maxlength="4" style="width:120px">
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="setupAccount()">C'est parti ! 🚀</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="createServerModal">
+  <div class="modal">
+    <h2>✨ Créer un serveur</h2>
+    <p>Donnez un nom et une emoji à votre serveur.</p>
+    <input type="text" id="serverNameInput" placeholder="Nom du serveur" maxlength="32">
+    <input type="text" id="serverEmojiInput" placeholder="Emoji (ex: 🎮)" maxlength="2">
+    <div class="modal-btns">
+      <button class="btn btn-secondary" onclick="closeModal('createServerModal')">Annuler</button>
+      <button class="btn btn-primary" onclick="createServer()">Créer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="createChannelModal">
+  <div class="modal">
+    <h2>📝 Créer un salon</h2>
+    <p>Ajoutez un nouveau salon à votre serveur.</p>
+    <input type="text" id="newChannelName" placeholder="nom-du-salon" maxlength="32">
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+        <input type="radio" name="chType" value="text" checked> 💬 Texte
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+        <input type="radio" name="chType" value="voice"> 🔊 Vocal
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+        <input type="radio" name="chType" value="announce"> 📢 Annonces
+      </label>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-secondary" onclick="closeModal('createChannelModal')">Annuler</button>
+      <button class="btn btn-primary" onclick="createChannel()">Créer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h2>⚙️ Paramètres</h2>
+    <p>Modifiez votre profil</p>
+    <input type="text" id="settingsName" placeholder="Nom d'affichage">
+    <div style="margin-bottom:12px">
+      <p style="font-size:13px;color:var(--text3);margin-bottom:8px">Statut</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('online')">🟢 En ligne</button>
+        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('away')">🟡 Absent</button>
+        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('dnd')">🔴 Ne pas déranger</button>
+        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('offline')">⚫ Invisible</button>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-secondary" onclick="closeModal('settingsModal')">Fermer</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// === STATE ===
+let state = {
+  me: { name: 'Moi', tag: '0000', avatar: '👤', color: '#7c6af7', status: 'online' },
+  servers: [],
+  activeServer: null,
+  activeChannel: null,
+  view: 'dm', // 'dm' | 'server'
+  messages: {}, // channelId -> []
+  membersVisible: true
+};
+
+const AVATARS = ['👾','🦊','🐉','🌟','🦁','🐺','🦋','🐙','🎭','🦄'];
+const COLORS = ['#7c6af7','#f472b6','#34d399','#fbbf24','#60a5fa','#f87171','#a78bfa','#fb923c'];
+const EMOJIS = ['😀','😂','❤️','👍','🎉','🔥','✨','😎','🤔','😅','👀','💯','🚀','🎮','💜','🌈','😍','🤣','👋','💪','🦄','🎯','⚡','🌟','😭','🥺','🤯','😏','🤙','💀'];
+
+const DEMO_MEMBERS = [
+  { name: 'Zara', tag: '4521', avatar: '🦊', color: '#f472b6', status: 'online', role: 'Admin' },
+  { name: 'Nino', tag: '7788', avatar: '👾', color: '#60a5fa', status: 'online', role: 'Membre' },
+  { name: 'Léa', tag: '3310', avatar: '🦋', color: '#34d399', status: 'away', role: 'Membre' },
+  { name: 'Max', tag: '9001', avatar: '🐉', color: '#fb923c', status: 'dnd', role: 'Modérateur' },
+  { name: 'Sofia', tag: '1111', avatar: '🌟', color: '#a78bfa', status: 'offline', role: 'Membre' },
+  { name: 'Kev', tag: '2222', avatar: '🦁', color: '#fbbf24', status: 'offline', role: 'Membre' }
+];
+
+const DEMO_MSGS = {
+  'général': [
+    { author: DEMO_MEMBERS[0], content: 'Bienvenue sur Likoo ! 🎉 Le chat de la team !', time: '10:30', reactions: [{ e: '🎉', count: 3 }, { e: '❤️', count: 2 }] },
+    { author: DEMO_MEMBERS[1], content: 'C\'est trop bien ! On peut enfin tous discuter ici', time: '10:31', reactions: [] },
+    { author: DEMO_MEMBERS[2], content: 'Trop hâte de voir toutes les fonctionnalités 👀', time: '10:32', reactions: [{ e: '👀', count: 1 }] },
+    { author: DEMO_MEMBERS[3], content: 'J\'ai invité tout le monde, on est chauds 🔥', time: '10:35', reactions: [{ e: '🔥', count: 4 }] },
+  ],
+  'intro': [
+    { author: DEMO_MEMBERS[1], content: 'Salut tout le monde ! Je suis Nino, passionné de gaming 🎮', time: '11:00', reactions: [] },
+    { author: DEMO_MEMBERS[2], content: 'Coucou ! Moi c\'est Léa, dev front-end dans la vie 💻', time: '11:02', reactions: [{ e: '💙', count: 1 }] },
+  ]
+};
+
+// === INIT ===
+function init() {
+  const saved = localStorage.getItem('likoo_user');
+  if (saved) {
+    state.me = JSON.parse(saved);
+    setupUI();
+  } else {
+    document.getElementById('setupModal').classList.add('open');
+  }
+  buildEmojiPicker();
+}
+
+function setupAccount() {
+  const name = document.getElementById('setupName').value.trim() || 'Utilisateur';
+  const tag = document.getElementById('setupTag').value.replace(/\D/g,'').slice(0,4).padStart(4,'0') || Math.floor(Math.random()*9000+1000).toString();
+  state.me = { name, tag, avatar: AVATARS[Math.floor(Math.random()*AVATARS.length)], color: COLORS[Math.floor(Math.random()*COLORS.length)], status: 'online' };
+  localStorage.setItem('likoo_user', JSON.stringify(state.me));
+  closeModal('setupModal');
+  setupUI();
+}
+
+function setupUI() {
+  document.getElementById('myName').textContent = state.me.name;
+  document.getElementById('myTag').textContent = '#' + state.me.tag;
+  document.getElementById('myAvatar').innerHTML = `<span style="font-size:18px">${state.me.avatar}</span><div class="status-dot" style="background:var(--green)"></div>`;
+  // Create demo server
+  createDemoServer();
+  renderServers();
+  showDM();
+}
+
+function createDemoServer() {
+  const srv = {
+    id: 'demo',
+    name: 'Mon Serveur',
+    emoji: '🏠',
+    color: '#7c6af7',
+    channels: [
+      { id: 'général', name: 'général', type: 'text', desc: 'Discussions générales', notif: 2 },
+      { id: 'intro', name: 'introductions', type: 'text', desc: 'Présentez-vous !' },
+      { id: 'annonces', name: 'annonces', type: 'announce', desc: 'Annonces officielles' },
+      { id: 'vocal1', name: 'Vocal général', type: 'voice' },
+      { id: 'gaming', name: 'gaming', type: 'text', desc: 'On parle jeux vidéo' },
+      { id: 'musique', name: 'musique', type: 'text', desc: 'Partage ta playlist 🎵' }
+    ],
+    members: DEMO_MEMBERS
+  };
+  state.servers = [srv];
+  // Init messages
+  state.messages['général'] = DEMO_MSGS['général'].map(m => ({...m, id: Math.random()}));
+  state.messages['intro'] = DEMO_MSGS['intro'].map(m => ({...m, id: Math.random()}));
+  state.messages['gaming'] = [];
+  state.messages['musique'] = [];
+  state.messages['annonces'] = [];
+  state.messages['vocal1'] = [];
+  state.messages['dm_zara'] = [
+    { author: DEMO_MEMBERS[0], content: 'Yo t\'as testé Likoo ? C\'est stylé non 😎', time: '09:00', reactions: [] }
+  ];
+  state.messages['dm_nino'] = [];
+}
+
+// === RENDER ===
+function renderServers() {
+  const list = document.getElementById('serversList');
+  list.innerHTML = state.servers.map(s => `
+    <div class="server-icon tooltip ${state.activeServer?.id === s.id ? 'active' : ''}" 
+      data-tip="${s.name}" onclick="selectServer('${s.id}')" style="position:relative">
+      ${s.emoji}
+    </div>
+  `).join('');
+}
+
+function selectServer(id) {
+  state.view = 'server';
+  state.activeServer = state.servers.find(s => s.id === id);
+  state.activeChannel = null;
+  renderServers();
+  renderChannels();
+  selectChannel(state.activeServer.channels[0].id);
+}
+
+function renderChannels() {
+  const srv = state.activeServer;
+  document.getElementById('serverName').textContent = srv.name;
+  document.getElementById('msgInput').placeholder = `Message...`;
+  const textChs = srv.channels.filter(c => c.type === 'text' || c.type === 'announce');
+  const voiceChs = srv.channels.filter(c => c.type === 'voice');
+  let html = `
+    <div class="channel-section">
+      <div class="channel-section-title">
+        <span>▸ Salons textuels</span>
+        <span style="cursor:pointer" onclick="openCreateChannel()">+</span>
+      </div>
+      ${textChs.map(c => `
+        <div class="channel-item ${state.activeChannel === c.id ? 'active' : ''}" onclick="selectChannel('${c.id}')">
+          <span class="ch-icon">${c.type === 'announce' ? '📢' : '#'}</span>
+          <span>${c.name}</span>
+          ${c.notif ? `<span class="notif">${c.notif}</span>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    <div class="channel-section">
+      <div class="channel-section-title">
+        <span>▸ Salons vocaux</span>
+        <span style="cursor:pointer" onclick="openCreateChannel()">+</span>
+      </div>
+      ${voiceChs.map(c => `
+        <div class="channel-item ${state.activeChannel === c.id ? 'active' : ''}" onclick="joinVoice('${c.id}')">
+          <span class="ch-icon">🔊</span>
+          <span>${c.name}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('channelsList').innerHTML = html;
+  renderMembers();
+}
+
+function selectChannel(id) {
+  state.activeChannel = id;
+  const ch = state.activeServer?.channels.find(c => c.id === id);
+  if (ch) {
+    // Clear notif
+    ch.notif = 0;
+    document.getElementById('channelName').textContent = ch.name;
+    document.getElementById('channelDesc').textContent = ch.desc || '';
+    document.getElementById('msgInput').placeholder = `Message #${ch.name}...`;
+  }
+  if (!state.messages[id]) state.messages[id] = [];
+  renderChannels();
+  renderMessages();
+  scrollBottom();
+}
+
+function renderMembers() {
+  const srv = state.activeServer;
+  if (!srv) return;
+  const online = srv.members.filter(m => m.status !== 'offline');
+  const offline = srv.members.filter(m => m.status === 'offline');
+  const admins = online.filter(m => m.role === 'Admin');
+  const mods = online.filter(m => m.role === 'Modérateur');
+  const members = online.filter(m => m.role === 'Membre');
+  let html = '';
+  const renderGroup = (title, list) => {
+    if (!list.length) return '';
+    return `<div class="member-section">
+      <div class="member-section-title">${title} — ${list.length}</div>
+      ${list.map(m => renderMember(m)).join('')}
+    </div>`;
+  };
+  html += renderGroup('Admin', admins);
+  html += renderGroup('Modérateur', mods);
+  html += renderGroup('Membres en ligne', members);
+  if (offline.length) html += renderGroup('Hors ligne', offline);
+  // Add self
+  html = `<div class="member-section">
+    <div class="member-section-title">Toi</div>
+    ${renderMember({ name: state.me.name, avatar: state.me.avatar, color: state.me.color, status: state.me.status, role: 'Membre' })}
+  </div>` + html;
+  document.getElementById('membersList').innerHTML = html;
+}
+
+function renderMember(m) {
+  return `<div class="member">
+    <div class="member-av" style="background:${m.color}20">
+      <span style="font-size:16px">${m.avatar}</span>
+      <div class="st ${m.status}"></div>
+    </div>
+    <div>
+      <div class="member-name">${m.name}</div>
+      <div class="member-role">${m.role || ''}</div>
+    </div>
+  </div>`;
+}
+
+function renderMessages() {
+  const msgs = state.messages[state.activeChannel] || state.messages[state.dmChannel] || [];
+  const container = document.getElementById('messages');
+  if (msgs.length === 0) {
+    const ch = state.activeServer?.channels.find(c => c.id === state.activeChannel);
+    container.innerHTML = `
+      <div style="text-align:center;padding:40px;color:var(--text3)">
+        <div style="font-size:48px;margin-bottom:16px">${state.view === 'server' ? '#' : '💬'}</div>
+        <div style="font-family:Syne,sans-serif;font-size:22px;font-weight:700;color:var(--text2);margin-bottom:8px">
+          ${state.view === 'server' ? 'Bienvenue dans #' + (ch?.name || '') : 'Début de votre conversation'}
+        </div>
+        <div style="font-size:14px">C'est le début du salon. Soyez les premiers à écrire !</div>
+      </div>
+    `;
+    return;
+  }
+  container.innerHTML = msgs.map((m, i) => {
+    const prev = msgs[i-1];
+    const sameAuthor = prev && prev.author?.name === m.author?.name && !m.system;
+    if (m.system) {
+      return `<div class="system-msg">${m.content}</div>`;
+    }
+    const author = m.author || { name: state.me.name, avatar: state.me.avatar, color: state.me.color };
+    const isMe = author.name === state.me.name;
+    const reactHtml = (m.reactions||[]).map(r =>
+      `<span class="reaction ${r.mine ? 'mine' : ''}" onclick="addReaction(${m.id},'${r.e}')">${r.e} ${r.count}</span>`
+    ).join('');
+    if (sameAuthor) {
+      return `<div class="msg-group" data-id="${m.id}">
+        <div style="width:40px;text-align:center;color:var(--text3);font-size:10px;padding-top:2px;flex-shrink:0">${m.time}</div>
+        <div class="msg-body">
+          ${m.file ? renderFile(m) : `<div class="msg-content">${m.content}</div>`}
+          <div>${reactHtml}</div>
+        </div>
+        <div class="msg-actions">
+          <span class="msg-action" onclick="addReactionUI(${m.id})" title="Réaction">😊</span>
+          ${isMe ? `<span class="msg-action" title="Modifier" onclick="editMsg(${m.id})">✏️</span>` : ''}
+          ${isMe ? `<span class="msg-action" style="color:var(--red)" title="Supprimer" onclick="deleteMsg(${m.id})">🗑</span>` : ''}
+        </div>
+      </div>`;
+    }
+    return `<div class="msg-group" data-id="${m.id}">
+      <div class="avatar" style="background:${author.color}20;font-size:20px">${author.avatar}</div>
+      <div class="msg-body">
+        <div class="msg-meta">
+          <span class="msg-author" style="color:${author.color}">${author.name}</span>
+          <span class="msg-time">${m.time}</span>
+        </div>
+        ${m.file ? renderFile(m) : `<div class="msg-content">${escHtml(m.content)}</div>`}
+        <div>${reactHtml}</div>
+      </div>
+      <div class="msg-actions">
+        <span class="msg-action" onclick="addReactionUI(${m.id})">😊</span>
+        ${isMe ? `<span class="msg-action" onclick="editMsg(${m.id})">✏️</span>` : ''}
+        ${isMe ? `<span class="msg-action" style="color:var(--red)" onclick="deleteMsg(${m.id})">🗑</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderFile(m) {
+  if (m.file.type.startsWith('image/')) {
+    return `<img src="${m.file.data}" alt="${m.file.name}" class="img-msg">`;
+  }
+  return `<div class="file-preview">
+    <span class="file-icon">📄</span>
+    <div><div class="file-name">${m.file.name}</div><div class="file-size">${m.file.size}</div></div>
+  </div>`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// === MESSAGING ===
+function now() {
+  return new Date().toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getActiveKey() {
+  return state.view === 'dm' ? state.dmChannel : state.activeChannel;
+}
+
+function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  const key = getActiveKey();
+  if (!key) return;
+  if (!state.messages[key]) state.messages[key] = [];
+  const msg = {
+    id: Date.now(),
+    author: { name: state.me.name, avatar: state.me.avatar, color: state.me.color },
+    content: text,
+    time: now(),
+    reactions: []
+  };
+  state.messages[key].push(msg);
+  input.value = '';
+  input.style.height = '';
+  renderMessages();
+  scrollBottom();
+  // Simulate reply sometimes
+  if (Math.random() > 0.6 && state.view === 'server') {
+    setTimeout(() => simulateReply(key), 1500 + Math.random() * 2000);
+  }
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(t) {
+  t.style.height = '';
+  t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+}
+
+let typingTimeout;
+function simulateTyping() {
+  if (Math.random() > 0.7 && state.view === 'server') {
+    const member = DEMO_MEMBERS[Math.floor(Math.random()*DEMO_MEMBERS.length)];
+    const ti = document.getElementById('typingIndicator');
+    ti.textContent = `${member.name} est en train d'écrire...`;
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => ti.textContent = '', 2000);
+  }
+}
+
+function simulateReply(key) {
+  const member = DEMO_MEMBERS.filter(m => m.status === 'online')[Math.floor(Math.random()*3)];
+  const replies = [
+    'Trop bien ça !', 'Haha oui complètement 😂', 'Je suis d\'accord',
+    'On peut en parler en vocal ?', 'Attends t\'as raison !', '++', '❤️',
+    'Ah ouais c\'est pas mal', 'Franchement bien joué', 'On s\'appelle ce soir ?'
+  ];
+  const msg = {
+    id: Date.now(),
+    author: member,
+    content: replies[Math.floor(Math.random()*replies.length)],
+    time: now(),
+    reactions: []
+  };
+  if (!state.messages[key]) state.messages[key] = [];
+  state.messages[key].push(msg);
+  if (state.activeChannel === key || state.dmChannel === key) {
+    renderMessages();
+    scrollBottom();
+  }
+}
+
+function deleteMsg(id) {
+  const key = getActiveKey();
+  state.messages[key] = state.messages[key].filter(m => m.id !== id);
+  renderMessages();
+}
+
+function editMsg(id) {
+  const key = getActiveKey();
+  const msg = state.messages[key].find(m => m.id === id);
+  if (!msg) return;
+  const txt = prompt('Modifier le message:', msg.content);
+  if (txt !== null && txt.trim()) {
+    msg.content = txt.trim() + ' (modifié)';
+    renderMessages();
+  }
+}
+
+function addReaction(id, emoji) {
+  const key = getActiveKey();
+  const msg = state.messages[key]?.find(m => m.id === id);
+  if (!msg) return;
+  const ex = msg.reactions.find(r => r.e === emoji);
+  if (ex) {
+    if (ex.mine) { ex.count--; ex.mine = false; if (ex.count <= 0) msg.reactions = msg.reactions.filter(r => r.e !== emoji); }
+    else { ex.count++; ex.mine = true; }
+  } else {
+    msg.reactions.push({ e: emoji, count: 1, mine: true });
+  }
+  renderMessages();
+}
+
+function addReactionUI(id) {
+  const emojis = ['❤️','👍','😂','🔥','🎉','👀','😎','💯'];
+  const e = emojis[Math.floor(Math.random()*emojis.length)];
+  addReaction(id, e);
+}
+
+function scrollBottom() {
+  const c = document.getElementById('messages');
+  c.scrollTop = c.scrollHeight;
+}
+
+function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const key = getActiveKey();
+  const reader = new FileReader();
+  reader.onload = e => {
+    const msg = {
+      id: Date.now(),
+      author: { name: state.me.name, avatar: state.me.avatar, color: state.me.color },
+      content: '',
+      time: now(),
+      reactions: [],
+      file: { name: file.name, type: file.type, size: formatBytes(file.size), data: e.target.result }
+    };
+    if (!state.messages[key]) state.messages[key] = [];
+    state.messages[key].push(msg);
+    renderMessages();
+    scrollBottom();
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+// === SERVERS / CHANNELS ===
+function openCreateServer() { document.getElementById('createServerModal').classList.add('open'); }
+function openCreateChannel() { document.getElementById('createChannelModal').classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function createServer() {
+  const name = document.getElementById('serverNameInput').value.trim();
+  const emoji = document.getElementById('serverEmojiInput').value.trim() || '🌐';
+  if (!name) return;
+  const id = 'srv_' + Date.now();
+  const srv = {
+    id, name, emoji,
+    color: COLORS[Math.floor(Math.random()*COLORS.length)],
+    channels: [
+      { id: id+'_gen', name: 'général', type: 'text', desc: 'Le salon principal' },
+      { id: id+'_vocal', name: 'Vocal', type: 'voice' }
+    ],
+    members: [DEMO_MEMBERS[Math.floor(Math.random()*3)]]
+  };
+  state.servers.push(srv);
+  document.getElementById('serverNameInput').value = '';
+  document.getElementById('serverEmojiInput').value = '';
+  closeModal('createServerModal');
+  renderServers();
+  selectServer(id);
+  // System message
+  const key = id + '_gen';
+  state.messages[key] = [{ system: true, content: `${state.me.name} a créé le serveur ${name} 🎉`, id: Date.now() }];
+}
+
+function createChannel() {
+  if (!state.activeServer) return;
+  const name = document.getElementById('newChannelName').value.trim().toLowerCase().replace(/\s+/g,'-') || 'nouveau-salon';
+  const type = document.querySelector('[name=chType]:checked').value;
+  const ch = { id: state.activeServer.id + '_' + name + '_' + Date.now(), name, type, desc: '' };
+  state.activeServer.channels.push(ch);
+  document.getElementById('newChannelName').value = '';
+  closeModal('createChannelModal');
+  renderChannels();
+}
+
+// === DMs ===
+const DM_USERS = [
+  { id: 'dm_zara', ...DEMO_MEMBERS[0] },
+  { id: 'dm_nino', ...DEMO_MEMBERS[1] },
+  { id: 'dm_lea', ...DEMO_MEMBERS[2] }
+];
+
+function showDM() {
+  state.view = 'dm';
+  state.activeServer = null;
+  state.activeChannel = null;
+  state.dmChannel = null;
+  document.getElementById('serverName').textContent = 'Messages Privés';
+  renderServers();
+  let html = `<div style="padding:8px 16px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Messages directs</div>`;
+  html += DM_USERS.map(u => `
+    <div class="dm-item ${state.dmChannel === u.id ? 'active' : ''}" onclick="selectDM('${u.id}')">
+      <div class="dm-av" style="background:${u.color}20;font-size:18px">${u.avatar}</div>
+      <div>
+        <div class="dm-name">${u.name}</div>
+        <div class="dm-status">${u.status === 'online' ? '<span class="online-badge"></span> En ligne' : 'Hors ligne'}</div>
+      </div>
+    </div>
+  `).join('');
+  html += `<div style="padding:8px 16px;margin-top:8px">
+    <button class="btn btn-primary" style="width:100%;font-size:13px" onclick="alert('Fonctionnalité : Ajouter un ami par tag (ex: Zara#4521)')">+ Ajouter un ami</button>
+  </div>`;
+  document.getElementById('channelsList').innerHTML = html;
+  document.getElementById('membersList').innerHTML = '';
+  document.getElementById('channelName').textContent = 'Messages Privés';
+  document.getElementById('channelDesc').textContent = 'Choisissez une conversation';
+  document.getElementById('messages').innerHTML = `
+    <div style="text-align:center;padding:60px 40px;color:var(--text3)">
+      <div style="font-size:64px;margin-bottom:16px">💬</div>
+      <div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:var(--text2);margin-bottom:8px">Vos messages</div>
+      <div>Sélectionnez une conversation pour commencer</div>
+    </div>
+  `;
+}
+
+function goHome() { showDM(); }
+
+function selectDM(id) {
+  state.dmChannel = id;
+  state.view = 'dm';
+  const user = DM_USERS.find(u => u.id === id);
+  if (!state.messages[id]) state.messages[id] = [];
+  document.getElementById('channelName').textContent = user.name;
+  document.getElementById('channelDesc').textContent = user.status === 'online' ? '🟢 En ligne' : '⚫ Hors ligne';
+  document.getElementById('msgInput').placeholder = `Message ${user.name}...`;
+  // Re-render DM list
+  showDM();
+  state.dmChannel = id;
+  const dmHtml = document.getElementById('channelsList').innerHTML.replace(
+    `dm-item `, `dm-item `
+  );
+  renderMessages();
+  scrollBottom();
+  // Simulate reply
+  if (Math.random() > 0.5 && state.messages[id].length === 0) {
+    setTimeout(() => {
+      const greets = ['Salut ! 👋', 'Hey, ça va ?', 'Yo ! T\'es là ?'];
+      state.messages[id].push({ author: user, content: greets[Math.floor(Math.random()*greets.length)], time: now(), reactions: [] });
+      renderMessages();
+      scrollBottom();
+    }, 800);
+  }
+}
+
+// === VOICE ===
+function joinVoice(id) {
+  const ch = state.activeServer?.channels.find(c => c.id === id);
+  if (!ch) return;
+  const existing = document.getElementById('voiceIndicator');
+  if (existing) existing.remove();
+  const vi = document.createElement('div');
+  vi.id = 'voiceIndicator';
+  vi.className = 'voice-indicator';
+  vi.innerHTML = `🔊 <span>${ch.name}</span> <span style="margin-left:auto;cursor:pointer" onclick="leaveVoice()">✕</span>`;
+  document.querySelector('.user-panel').before(vi);
+  state.activeChannel = id;
+  renderChannels();
+}
+
+function leaveVoice() {
+  document.getElementById('voiceIndicator')?.remove();
+}
+
+// === MISC ===
+function toggleMembers() {
+  const bar = document.getElementById('membersBar');
+  state.membersVisible = !state.membersVisible;
+  bar.classList.toggle('hidden', !state.membersVisible);
+}
+
+function toggleMic(btn) { btn.style.color = btn.style.color === 'var(--red)' ? '' : 'var(--red)'; }
+function toggleDeaf(btn) { btn.style.color = btn.style.color === 'var(--red)' ? '' : 'var(--red)'; }
+
+function openSettings() {
+  document.getElementById('settingsName').value = state.me.name;
+  document.getElementById('settingsModal').classList.add('open');
+}
+
+function saveSettings() {
+  const name = document.getElementById('settingsName').value.trim() || state.me.name;
+  state.me.name = name;
+  localStorage.setItem('likoo_user', JSON.stringify(state.me));
+  document.getElementById('myName').textContent = name;
+  closeModal('settingsModal');
+}
+
+function setStatus(s) {
+  state.me.status = s;
+  const colors = { online: 'var(--green)', away: '#fbbf24', dnd: 'var(--red)', offline: 'var(--text3)' };
+  document.querySelector('.status-dot').style.background = colors[s];
+}
+
+function buildEmojiPicker() {
+  const picker = document.getElementById('emojiPicker');
+  picker.innerHTML = `<div class="emoji-grid">${EMOJIS.map(e => `<button class="emoji-btn" onclick="insertEmoji('${e}')">${e}</button>`).join('')}</div>`;
+}
+
+function toggleEmoji() { document.getElementById('emojiPicker').classList.toggle('open'); }
+function insertEmoji(e) {
+  const inp = document.getElementById('msgInput');
+  inp.value += e; inp.focus();
+  document.getElementById('emojiPicker').classList.remove('open');
+}
+
+// Click outside to close
+document.addEventListener('click', e => {
+  if (!e.target.closest('#emojiPicker') && !e.target.closest('.input-btn')) {
+    document.getElementById('emojiPicker').classList.remove('open');
+  }
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('open');
+  }
+});
+
+// Start
+init();
+</script>
+</body>
+</html>
