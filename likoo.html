@@ -4,767 +4,1069 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Likoo</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-theme="amber">
 
-<!-- Servers bar -->
-<div class="servers-bar">
-  <div class="logo tooltip" data-tip="Likoo" onclick="goHome()">L</div>
-  <div class="sep"></div>
-  <div id="serversList"></div>
-  <div class="sep"></div>
-  <div class="add-server" onclick="openCreateServer()" title="Créer un serveur">+</div>
-</div>
-
-<!-- Channels bar -->
-<div class="channels-bar">
-  <div class="server-header" id="serverHeader">
-    <h2 id="serverName">Messages Privés</h2>
-    <span>⚙</span>
+<!-- CUSTOM TITLEBAR (Electron) -->
+<div id="titlebar" class="titlebar">
+  <div class="titlebar-left">
+    <span class="titlebar-logo">Likoo</span>
+    <span class="titlebar-sep">|</span>
+    <span class="titlebar-location" id="titlebarLocation">Accueil</span>
   </div>
-  <div class="search-bar">
-    <span style="color:var(--text3);font-size:14px">🔍</span>
-    <input type="text" placeholder="Rechercher...">
-  </div>
-  <div id="channelsList" style="flex:1;overflow-y:auto;padding:4px 0"></div>
-  <div class="user-panel">
-    <div class="user-avatar-sm" id="myAvatar">
-      <div class="status-dot"></div>
-    </div>
-    <div class="user-info">
-      <div class="name" id="myName">Moi</div>
-      <div class="tag" id="myTag">#0000</div>
-    </div>
-    <div class="panel-btns">
-      <button class="panel-btn" title="Micro" onclick="toggleMic(this)">🎙</button>
-      <button class="panel-btn" title="Casque" onclick="toggleDeaf(this)">🎧</button>
-      <button class="panel-btn" onclick="openSettings()">⚙</button>
-    </div>
+  <div class="titlebar-right">
+    <button id="minBtn" class="win-btn" title="Minimiser">—</button>
+    <button id="maxBtn" class="win-btn" title="Maximiser">□</button>
+    <button id="closeBtn" class="win-btn" title="Fermer">✕</button>
   </div>
 </div>
 
-<!-- Main content -->
-<div class="main">
-  <div class="chat-header">
-    <span style="color:var(--accent);font-size:18px">#</span>
-    <span class="ch-name" id="channelName">général</span>
-    <span class="ch-desc" id="channelDesc">Bienvenue sur Likoo !</span>
-    <div class="header-actions">
-      <button class="panel-btn tooltip" data-tip="Membres" onclick="toggleMembers()">👥</button>
-      <button class="panel-btn tooltip" data-tip="Épingles">📌</button>
-      <button class="panel-btn tooltip" data-tip="Rechercher">🔍</button>
-      <button class="panel-btn tooltip" data-tip="Boîte de réception">🔔</button>
+<!-- TOP NAV -->
+<div class="topnav">
+  <div class="logo" onclick="showHome()">Likoo</div>
+  <div class="nav-servers" id="navServers"></div>
+  <div class="nav-sep"></div>
+  <div class="nav-add" onclick="openModal('modalCreateServer')">+ Serveur</div>
+  <div class="nav-sep"></div>
+  <div class="nav-profile">
+    <div class="nav-av" id="navAv" onclick="openSettings()">
+      <div class="st-dot online" id="navStatusDot"></div>
+    </div>
+    <div class="nav-username" id="navName">—</div>
+    <button class="nav-btn" onclick="toggleBtn(this)" title="Micro">🎙</button>
+    <button class="nav-btn" onclick="toggleBtn(this)" title="Casque">🎧</button>
+    <button class="nav-btn settings-btn" onclick="openSettings()" title="Paramètres">⚙</button>
+  </div>
+</div>
+
+<!-- WORKSPACE — 3 zones -->
+<div class="workspace" id="workspace">
+
+  <!-- ZONE LEFT -->
+  <div class="zone zone-left" id="zoneLeft" ondragover="onZoneDragOver(event,'left')" ondragleave="onZoneDragLeave(event,'left')" ondrop="onZoneDrop(event,'left')">
+    <!-- channels by default -->
+    <div class="module" id="mod-channels" draggable="true" ondragstart="onModDragStart(event,'mod-channels')" ondragend="onModDragEnd()">
+      <div class="module-header">
+        <span class="drag-handle">⋮⋮</span>
+        <span class="module-icon" id="chModIcon">#</span>
+        <span class="module-title" id="chModTitle">Salons</span>
+      </div>
+      <div class="search-bar"><span>🔍</span><input type="text" placeholder="Rechercher…"></div>
+      <div class="channels-scroll" id="channelsList"></div>
+      <div class="user-dock" id="userDock"></div>
     </div>
   </div>
-  <div class="messages" id="messages"></div>
-  <div style="position:relative">
-    <div class="emoji-picker" id="emojiPicker"></div>
-    <div class="typing" id="typingIndicator"></div>
-    <div class="input-area">
-      <div class="input-box">
-        <button class="input-btn" onclick="document.getElementById('fileInput').click()" title="Joindre">📎</button>
-        <input type="file" id="fileInput" style="display:none" onchange="handleFile(this)">
-        <textarea id="msgInput" placeholder="Message #général..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);simulateTyping()"></textarea>
-        <button class="input-btn" onclick="toggleEmoji()" title="Emoji">😊</button>
-        <button class="send-btn" onclick="sendMessage()">➤</button>
+
+  <!-- ZONE CENTER -->
+  <div class="zone zone-center" id="zoneCenter">
+    <!-- chat by default -->
+    <div class="module" id="mod-chat" draggable="true" ondragstart="onModDragStart(event,'mod-chat')" ondragend="onModDragEnd()">
+      <!-- Chat topbar -->
+      <div class="chat-topbar">
+        <span class="chat-icon" id="chatIcon">#</span>
+        <span class="chat-name" id="chatName">Likoo</span>
+        <span class="chat-desc" id="chatDesc"></span>
+        <div class="topbar-btns">
+          <button class="topbar-btn">📌</button>
+          <button class="topbar-btn" onclick="toggleMembers()">👥</button>
+        </div>
+      </div>
+      <!-- Messages -->
+      <div class="messages" id="messages">
+        <div class="empty-chat">
+          <div class="big">💬</div>
+          <h3>Bienvenue sur Likoo</h3>
+          <p style="font-size:13px">Rejoignez un serveur ou démarrez une conversation ✨</p>
+        </div>
+      </div>
+      <!-- Input -->
+      <div class="input-area">
+        <div class="emoji-picker" id="emojiPicker"></div>
+        <div class="typing-hint" id="typingHint"></div>
+        <div class="input-box">
+          <button class="inp-btn" onclick="document.getElementById('fileIn').click()">📎</button>
+          <input type="file" id="fileIn" style="display:none" onchange="handleFile(this)">
+          <textarea id="msgInput" rows="1" placeholder="Message…" onkeydown="handleKey(event)" oninput="autoResize(this);simTyping()"></textarea>
+          <button class="inp-btn" onclick="toggleEmoji()">😊</button>
+          <button class="send-btn" onclick="sendMsg()">➤</button>
+        </div>
       </div>
     </div>
   </div>
+
+  <!-- ZONE RIGHT -->
+  <div class="zone zone-right" id="zoneRight" ondragover="onZoneDragOver(event,'right')" ondragleave="onZoneDragLeave(event,'right')" ondrop="onZoneDrop(event,'right')">
+    <!-- members by default -->
+    <div class="module" id="mod-members" draggable="true" ondragstart="onModDragStart(event,'mod-members')" ondragend="onModDragEnd()">
+      <div class="module-header">
+        <span class="drag-handle">⋮⋮</span>
+        <span class="module-icon">👥</span>
+        <span class="module-title">Membres</span>
+      </div>
+      <div class="members-scroll" id="membersList"></div>
+    </div>
+  </div>
+
 </div>
 
-<!-- Members bar -->
-<div class="members-bar" id="membersBar">
-  <div id="membersList"></div>
+<!-- MOBILE BOTTOM NAV -->
+<div id="mob-nav">
+  <button class="mob-tab active" id="mobTabSrv" onclick="mobSwitch('servers')">🏠<span>Serveurs</span></button>
+  <button class="mob-tab" id="mobTabCh" onclick="mobSwitch('channels')">☰<span>Salons</span></button>
+  <button class="mob-tab" id="mobTabChat" onclick="mobSwitch('chat')">💬<span>Chat</span></button>
+  <button class="mob-tab" id="mobTabMem" onclick="mobSwitch('members')">👥<span>Membres</span></button>
 </div>
 
-<!-- MODALS -->
-<div class="modal-overlay" id="setupModal">
+<!-- ══════════════════════ MODALS ══════════════════════ -->
+
+<!-- Setup -->
+<div class="overlay" id="modalSetup">
   <div class="modal">
-    <h2>👋 Bienvenue sur Likoo !</h2>
-    <p>Créez votre compte pour commencer à discuter avec vos amis.</p>
-    <input type="text" id="setupName" placeholder="Votre nom d'affichage" maxlength="32">
-    <input type="text" id="setupTag" placeholder="Tag (ex: 1234)" maxlength="4" style="width:120px">
-    <div class="modal-btns">
-      <button class="btn btn-primary" onclick="setupAccount()">C'est parti ! 🚀</button>
+    <h2>Bienvenue sur Likoo 👋</h2>
+    <p class="sub">Créez votre profil pour rejoindre la discussion.</p>
+    <input type="text" id="setupName" placeholder="Ton nom d'affichage" maxlength="32">
+    <input type="text" id="setupTag" placeholder="Tag numérique (ex: 1234)" maxlength="4">
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="setupAccount()">Entrer dans Likoo 🚀</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="createServerModal">
+<!-- Create Server -->
+<div class="overlay" id="modalCreateServer">
   <div class="modal">
-    <h2>✨ Créer un serveur</h2>
-    <p>Donnez un nom et une emoji à votre serveur.</p>
-    <input type="text" id="serverNameInput" placeholder="Nom du serveur" maxlength="32">
-    <input type="text" id="serverEmojiInput" placeholder="Emoji (ex: 🎮)" maxlength="2">
-    <div class="modal-btns">
-      <button class="btn btn-secondary" onclick="closeModal('createServerModal')">Annuler</button>
+    <h2>Créer un serveur ✨</h2>
+    <p class="sub">Donnez un nom et une ambiance à votre communauté.</p>
+    <input type="text" id="srvName" placeholder="Nom du serveur" maxlength="32">
+    <input type="text" id="srvEmoji" placeholder="Emoji (ex: 🎮 🎵 🎨)" maxlength="2">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalCreateServer')">Annuler</button>
       <button class="btn btn-primary" onclick="createServer()">Créer</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="createChannelModal">
+<!-- Create Channel -->
+<div class="overlay" id="modalCreateChannel">
   <div class="modal">
-    <h2>📝 Créer un salon</h2>
-    <p>Ajoutez un nouveau salon à votre serveur.</p>
-    <input type="text" id="newChannelName" placeholder="nom-du-salon" maxlength="32">
-    <div style="display:flex;gap:10px;margin-bottom:12px">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
-        <input type="radio" name="chType" value="text" checked> 💬 Texte
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
-        <input type="radio" name="chType" value="voice"> 🔊 Vocal
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
-        <input type="radio" name="chType" value="announce"> 📢 Annonces
-      </label>
+    <h2>Nouveau salon</h2>
+    <p class="sub">Ajoutez un salon à votre serveur.</p>
+    <input type="text" id="newChName" placeholder="nom-du-salon" maxlength="32">
+    <div class="chip-row">
+      <div class="chip sel" data-type="text" onclick="selChType(this)">💬 Texte</div>
+      <div class="chip" data-type="voice" onclick="selChType(this)">🔊 Vocal</div>
+      <div class="chip" data-type="announce" onclick="selChType(this)">📢 Annonces</div>
     </div>
-    <div class="modal-btns">
-      <button class="btn btn-secondary" onclick="closeModal('createChannelModal')">Annuler</button>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalCreateChannel')">Annuler</button>
       <button class="btn btn-primary" onclick="createChannel()">Créer</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="settingsModal">
-  <div class="modal">
-    <h2>⚙️ Paramètres</h2>
-    <p>Modifiez votre profil</p>
-    <input type="text" id="settingsName" placeholder="Nom d'affichage">
-    <div style="margin-bottom:12px">
-      <p style="font-size:13px;color:var(--text3);margin-bottom:8px">Statut</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('online')">🟢 En ligne</button>
-        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('away')">🟡 Absent</button>
-        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('dnd')">🔴 Ne pas déranger</button>
-        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="setStatus('offline')">⚫ Invisible</button>
+<!-- ═══════════════════════════════════════════════
+     SETTINGS MODAL — Paramètres complets
+═══════════════════════════════════════════════ -->
+<div class="overlay" id="modalSettings">
+  <div class="modal" style="max-width:560px">
+    <h2>Paramètres ⚙</h2>
+    <p class="sub">Personnalisez Likoo à votre goût.</p>
+
+    <!-- Profil -->
+    <div class="settings-section">
+      <h3>🙋 Mon profil</h3>
+      <input type="text" id="setName" placeholder="Nom d'affichage">
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text4);margin-bottom:7px">STATUT</div>
+        <div class="status-row" id="statusRow">
+          <div class="st-chip active" data-status="online" onclick="setStatus(this)">🟢 En ligne</div>
+          <div class="st-chip" data-status="away" onclick="setStatus(this)">🟡 Absent</div>
+          <div class="st-chip" data-status="dnd" onclick="setStatus(this)">🔴 Ne pas déranger</div>
+          <div class="st-chip" data-status="offline" onclick="setStatus(this)">⚫ Invisible</div>
+        </div>
       </div>
     </div>
-    <div class="modal-btns">
-      <button class="btn btn-secondary" onclick="closeModal('settingsModal')">Fermer</button>
+
+    <!-- Thèmes -->
+    <div class="settings-section">
+      <h3>🎨 Thème de couleurs</h3>
+      <div class="theme-grid" id="themeGrid">
+
+        <div class="theme-card active" data-theme="amber" onclick="applyTheme(this)">
+          <div class="theme-preview">
+            <div class="theme-preview-nav" style="background:#5c3d1e"></div>
+            <div class="theme-preview-content" style="background:#faf6ef">
+              <div class="theme-preview-bar" style="background:#e8850a"></div>
+              <div class="theme-preview-msg" style="background:#6b4a28"></div>
+              <div class="theme-preview-msg" style="background:#6b4a28;width:55%"></div>
+            </div>
+          </div>
+          <div class="theme-name">Ambre Chaud</div>
+        </div>
+
+        <div class="theme-card" data-theme="violet" onclick="applyTheme(this)">
+          <div class="theme-preview">
+            <div class="theme-preview-nav" style="background:#3b1f6e"></div>
+            <div class="theme-preview-content" style="background:#f0edf8">
+              <div class="theme-preview-bar" style="background:#8b5cf6"></div>
+              <div class="theme-preview-msg" style="background:#4a3a72"></div>
+              <div class="theme-preview-msg" style="background:#4a3a72;width:50%"></div>
+            </div>
+          </div>
+          <div class="theme-name">Violet Pastel</div>
+        </div>
+
+        <div class="theme-card" data-theme="night" onclick="applyTheme(this)">
+          <div class="theme-preview">
+            <div class="theme-preview-nav" style="background:#090c14"></div>
+            <div class="theme-preview-content" style="background:#0f1117">
+              <div class="theme-preview-bar" style="background:#38bdf8"></div>
+              <div class="theme-preview-msg" style="background:#64748b"></div>
+              <div class="theme-preview-msg" style="background:#64748b;width:60%"></div>
+            </div>
+          </div>
+          <div class="theme-name">Minuit</div>
+        </div>
+
+        <div class="theme-card" data-theme="sakura" onclick="applyTheme(this)">
+          <div class="theme-preview">
+            <div class="theme-preview-nav" style="background:#831843"></div>
+            <div class="theme-preview-content" style="background:#fff0f5">
+              <div class="theme-preview-bar" style="background:#e879a0"></div>
+              <div class="theme-preview-msg" style="background:#be185d"></div>
+              <div class="theme-preview-msg" style="background:#be185d;width:45%"></div>
+            </div>
+          </div>
+          <div class="theme-name">Sakura</div>
+        </div>
+
+        <div class="theme-card" data-theme="forest" onclick="applyTheme(this)">
+          <div class="theme-preview">
+            <div class="theme-preview-nav" style="background:#052010"></div>
+            <div class="theme-preview-content" style="background:#0d1f13">
+              <div class="theme-preview-bar" style="background:#4ade80"></div>
+              <div class="theme-preview-msg" style="background:#34d399"></div>
+              <div class="theme-preview-msg" style="background:#34d399;width:65%"></div>
+            </div>
+          </div>
+          <div class="theme-name">Forêt</div>
+        </div>
+
+        <div class="theme-card" data-theme="golden" onclick="applyTheme(this)">
+          <div class="theme-preview">
+            <div class="theme-preview-nav" style="background:#78350f"></div>
+            <div class="theme-preview-content" style="background:#fffbeb">
+              <div class="theme-preview-bar" style="background:#d97706"></div>
+              <div class="theme-preview-msg" style="background:#78350f"></div>
+              <div class="theme-preview-msg" style="background:#78350f;width:55%"></div>
+            </div>
+          </div>
+          <div class="theme-name">Doré</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Disposition des modules -->
+    <div class="settings-section">
+      <h3>📐 Disposition des modules</h3>
+      <p style="font-size:12px;color:var(--text4);margin-bottom:10px">Cliquez pour appliquer — ou glissez-déposez les blocs manuellement dans les zones.</p>
+      <div class="layout-grid" id="layoutGrid">
+
+        <div class="layout-card active" data-layout="default" onclick="applyLayout(this)">
+          <div class="layout-preview">
+            <div class="lp-block" style="width:28%"></div>
+            <div class="lp-main"></div>
+            <div class="lp-block" style="width:24%"></div>
+          </div>
+          <div class="layout-label">Classique</div>
+        </div>
+
+        <div class="layout-card" data-layout="focus" onclick="applyLayout(this)">
+          <div class="layout-preview">
+            <div class="lp-block" style="width:24%"></div>
+            <div class="lp-main"></div>
+          </div>
+          <div class="layout-label">Focus (sans membres)</div>
+        </div>
+
+        <div class="layout-card" data-layout="compact" onclick="applyLayout(this)">
+          <div class="layout-preview">
+            <div class="lp-block" style="width:20%"></div>
+            <div class="lp-main"></div>
+            <div class="lp-block" style="width:18%"></div>
+          </div>
+          <div class="layout-label">Compact</div>
+        </div>
+
+        <div class="layout-card" data-layout="wide-chat" onclick="applyLayout(this)">
+          <div class="layout-preview">
+            <div class="lp-main"></div>
+            <div class="lp-block" style="width:28%"></div>
+          </div>
+          <div class="layout-label">Chat Large</div>
+        </div>
+
+        <div class="layout-card" data-layout="reversed" onclick="applyLayout(this)">
+          <div class="layout-preview">
+            <div class="lp-block" style="width:24%"></div>
+            <div class="lp-main"></div>
+            <div class="lp-block" style="width:28%"></div>
+          </div>
+          <div class="layout-label">Inversé</div>
+        </div>
+
+        <div class="layout-card" data-layout="minimal" onclick="applyLayout(this)">
+          <div class="layout-preview">
+            <div class="lp-main"></div>
+          </div>
+          <div class="layout-label">Minimaliste</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Police -->
+    <div class="settings-section">
+      <h3>🔤 Police d'écriture</h3>
+      <div class="font-row">
+        <div class="font-chip active" data-font="Plus Jakarta Sans" onclick="applyFont(this)" style="font-family:'Plus Jakarta Sans',sans-serif">Jakarta</div>
+        <div class="font-chip" data-font="Georgia" onclick="applyFont(this)" style="font-family:Georgia,serif">Georgia</div>
+        <div class="font-chip" data-font="'Courier New'" onclick="applyFont(this)" style="font-family:'Courier New',monospace">Courier</div>
+        <div class="font-chip" data-font="Verdana" onclick="applyFont(this)" style="font-family:Verdana,sans-serif">Verdana</div>
+      </div>
+    </div>
+
+    <!-- Taille du texte -->
+    <div class="settings-section">
+      <h3>🔡 Taille du texte</h3>
+      <div class="slider-row">
+        <span style="font-size:11px;color:var(--text4)">A</span>
+        <input type="range" min="11" max="18" value="13" id="fontSizeSlider" oninput="applyFontSize(this.value)">
+        <span style="font-size:16px;color:var(--text4)">A</span>
+        <span class="slider-val" id="fontSizeVal">13</span>
+      </div>
+    </div>
+
+    <!-- Toggles -->
+    <div class="settings-section">
+      <h3>⚙ Préférences</h3>
+      <div class="toggle-row">
+        <span class="toggle-label">Animations des messages</span>
+        <label class="toggle"><input type="checkbox" checked onchange="toggleAnim(this)"><div class="toggle-track"></div></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Compact (messages groupés)</span>
+        <label class="toggle"><input type="checkbox" onchange="toggleCompact(this)"><div class="toggle-track"></div></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Notifications sonores</span>
+        <label class="toggle"><input type="checkbox" checked><div class="toggle-track"></div></label>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalSettings')">Fermer</button>
       <button class="btn btn-primary" onclick="saveSettings()">Sauvegarder</button>
     </div>
   </div>
 </div>
 
 <script>
-// === STATE ===
-let state = {
-  me: { name: 'Moi', tag: '0000', avatar: '👤', color: '#7c6af7', status: 'online' },
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const S = {
+  me: null,
   servers: [],
-  activeServer: null,
-  activeChannel: null,
-  view: 'dm', // 'dm' | 'server'
-  messages: {}, // channelId -> []
-  membersVisible: true
+  activeSrv: null,
+  activeCh: null,
+  dmChannel: null,
+  view: 'home',
+  messages: {},
+  inVoice: null,
+  theme: 'amber',
+  layout: 'default',
+  dragMod: null,
+  membersVisible: true,
+  compact: false,
+  anim: true,
 };
 
-const AVATARS = ['👾','🦊','🐉','🌟','🦁','🐺','🦋','🐙','🎭','🦄'];
-const COLORS = ['#7c6af7','#f472b6','#34d399','#fbbf24','#60a5fa','#f87171','#a78bfa','#fb923c'];
-const EMOJIS = ['😀','😂','❤️','👍','🎉','🔥','✨','😎','🤔','😅','👀','💯','🚀','🎮','💜','🌈','😍','🤣','👋','💪','🦄','🎯','⚡','🌟','😭','🥺','🤯','😏','🤙','💀'];
+const COLORS  = ['#e8850a','#8b5cf6','#ec4899','#14b8a6','#3b82f6','#22c55e','#ef4444','#f59e0b'];
+const AVATARS = ['🦊','👾','🐉','🌟','🦁','🐺','🦋','🐙','🎭','🦄','🐻','🐸'];
+const EMOJIS  = ['😀','😂','❤️','👍','🎉','🔥','✨','😎','🤔','😅','👀','💯','🚀','🎮','💜','😍','🤣','👋','💪','🦄','⚡','🌟','😭','🥺','🤯','😏','🤙','💀','🍕','🎵'];
 
 const DEMO_MEMBERS = [
-  { name: 'Zara', tag: '4521', avatar: '🦊', color: '#f472b6', status: 'online', role: 'Admin' },
-  { name: 'Nino', tag: '7788', avatar: '👾', color: '#60a5fa', status: 'online', role: 'Membre' },
-  { name: 'Léa', tag: '3310', avatar: '🦋', color: '#34d399', status: 'away', role: 'Membre' },
-  { name: 'Max', tag: '9001', avatar: '🐉', color: '#fb923c', status: 'dnd', role: 'Modérateur' },
-  { name: 'Sofia', tag: '1111', avatar: '🌟', color: '#a78bfa', status: 'offline', role: 'Membre' },
-  { name: 'Kev', tag: '2222', avatar: '🦁', color: '#fbbf24', status: 'offline', role: 'Membre' }
+  {name:'Zara', tag:'4521',av:'🦊',color:'#e74c3c',status:'online', role:'Admin'},
+  {name:'Nino', tag:'7788',av:'👾',color:'#3b82f6',status:'online', role:'Membre'},
+  {name:'Léa',  tag:'3310',av:'🦋',color:'#22c55e',status:'away',   role:'Membre'},
+  {name:'Max',  tag:'9001',av:'🐉',color:'#f59e0b',status:'dnd',    role:'Modérateur'},
+  {name:'Sofia',tag:'1111',av:'🌟',color:'#9b59b6',status:'offline',role:'Membre'},
+  {name:'Kev',  tag:'2222',av:'🦁',color:'#14b8a6',status:'offline',role:'Membre'},
+];
+const DEMO_DMS = [
+  {id:'dm_zara',...DEMO_MEMBERS[0]},
+  {id:'dm_nino',...DEMO_MEMBERS[1]},
+  {id:'dm_lea', ...DEMO_MEMBERS[2]},
 ];
 
-const DEMO_MSGS = {
-  'général': [
-    { author: DEMO_MEMBERS[0], content: 'Bienvenue sur Likoo ! 🎉 Le chat de la team !', time: '10:30', reactions: [{ e: '🎉', count: 3 }, { e: '❤️', count: 2 }] },
-    { author: DEMO_MEMBERS[1], content: 'C\'est trop bien ! On peut enfin tous discuter ici', time: '10:31', reactions: [] },
-    { author: DEMO_MEMBERS[2], content: 'Trop hâte de voir toutes les fonctionnalités 👀', time: '10:32', reactions: [{ e: '👀', count: 1 }] },
-    { author: DEMO_MEMBERS[3], content: 'J\'ai invité tout le monde, on est chauds 🔥', time: '10:35', reactions: [{ e: '🔥', count: 4 }] },
-  ],
-  'intro': [
-    { author: DEMO_MEMBERS[1], content: 'Salut tout le monde ! Je suis Nino, passionné de gaming 🎮', time: '11:00', reactions: [] },
-    { author: DEMO_MEMBERS[2], content: 'Coucou ! Moi c\'est Léa, dev front-end dans la vie 💻', time: '11:02', reactions: [{ e: '💙', count: 1 }] },
-  ]
+// ═══════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════
+window.onload = function() {
+  const saved = localStorage.getItem('likoo_me');
+  const savedTheme = localStorage.getItem('likoo_theme');
+  const savedLayout = localStorage.getItem('likoo_layout');
+  if (savedTheme) applyThemeVal(savedTheme);
+  if (savedLayout) applyLayoutVal(savedLayout);
+  if (saved) { S.me = JSON.parse(saved); startApp(); }
+  else openModal('modalSetup');
+  buildEmoji();
 };
 
-// === INIT ===
-function init() {
-  const saved = localStorage.getItem('likoo_user');
-  if (saved) {
-    state.me = JSON.parse(saved);
-    setupUI();
-  } else {
-    document.getElementById('setupModal').classList.add('open');
-  }
-  buildEmojiPicker();
-}
-
-function setupAccount() {
-  const name = document.getElementById('setupName').value.trim() || 'Utilisateur';
-  const tag = document.getElementById('setupTag').value.replace(/\D/g,'').slice(0,4).padStart(4,'0') || Math.floor(Math.random()*9000+1000).toString();
-  state.me = { name, tag, avatar: AVATARS[Math.floor(Math.random()*AVATARS.length)], color: COLORS[Math.floor(Math.random()*COLORS.length)], status: 'online' };
-  localStorage.setItem('likoo_user', JSON.stringify(state.me));
-  closeModal('setupModal');
-  setupUI();
-}
-
-function setupUI() {
-  document.getElementById('myName').textContent = state.me.name;
-  document.getElementById('myTag').textContent = '#' + state.me.tag;
-  document.getElementById('myAvatar').innerHTML = `<span style="font-size:18px">${state.me.avatar}</span><div class="status-dot" style="background:var(--green)"></div>`;
-  // Create demo server
-  createDemoServer();
-  renderServers();
-  showDM();
-}
-
-function createDemoServer() {
-  const srv = {
-    id: 'demo',
-    name: 'Mon Serveur',
-    emoji: '🏠',
-    color: '#7c6af7',
-    channels: [
-      { id: 'général', name: 'général', type: 'text', desc: 'Discussions générales', notif: 2 },
-      { id: 'intro', name: 'introductions', type: 'text', desc: 'Présentez-vous !' },
-      { id: 'annonces', name: 'annonces', type: 'announce', desc: 'Annonces officielles' },
-      { id: 'vocal1', name: 'Vocal général', type: 'voice' },
-      { id: 'gaming', name: 'gaming', type: 'text', desc: 'On parle jeux vidéo' },
-      { id: 'musique', name: 'musique', type: 'text', desc: 'Partage ta playlist 🎵' }
-    ],
-    members: DEMO_MEMBERS
-  };
-  state.servers = [srv];
-  // Init messages
-  state.messages['général'] = DEMO_MSGS['général'].map(m => ({...m, id: Math.random()}));
-  state.messages['intro'] = DEMO_MSGS['intro'].map(m => ({...m, id: Math.random()}));
-  state.messages['gaming'] = [];
-  state.messages['musique'] = [];
-  state.messages['annonces'] = [];
-  state.messages['vocal1'] = [];
-  state.messages['dm_zara'] = [
-    { author: DEMO_MEMBERS[0], content: 'Yo t\'as testé Likoo ? C\'est stylé non 😎', time: '09:00', reactions: [] }
-  ];
-  state.messages['dm_nino'] = [];
-}
-
-// === RENDER ===
-function renderServers() {
-  const list = document.getElementById('serversList');
-  list.innerHTML = state.servers.map(s => `
-    <div class="server-icon tooltip ${state.activeServer?.id === s.id ? 'active' : ''}" 
-      data-tip="${s.name}" onclick="selectServer('${s.id}')" style="position:relative">
-      ${s.emoji}
-    </div>
-  `).join('');
-}
-
-function selectServer(id) {
-  state.view = 'server';
-  state.activeServer = state.servers.find(s => s.id === id);
-  state.activeChannel = null;
-  renderServers();
-  renderChannels();
-  selectChannel(state.activeServer.channels[0].id);
-}
-
-function renderChannels() {
-  const srv = state.activeServer;
-  document.getElementById('serverName').textContent = srv.name;
-  document.getElementById('msgInput').placeholder = `Message...`;
-  const textChs = srv.channels.filter(c => c.type === 'text' || c.type === 'announce');
-  const voiceChs = srv.channels.filter(c => c.type === 'voice');
-  let html = `
-    <div class="channel-section">
-      <div class="channel-section-title">
-        <span>▸ Salons textuels</span>
-        <span style="cursor:pointer" onclick="openCreateChannel()">+</span>
-      </div>
-      ${textChs.map(c => `
-        <div class="channel-item ${state.activeChannel === c.id ? 'active' : ''}" onclick="selectChannel('${c.id}')">
-          <span class="ch-icon">${c.type === 'announce' ? '📢' : '#'}</span>
-          <span>${c.name}</span>
-          ${c.notif ? `<span class="notif">${c.notif}</span>` : ''}
-        </div>
-      `).join('')}
-    </div>
-    <div class="channel-section">
-      <div class="channel-section-title">
-        <span>▸ Salons vocaux</span>
-        <span style="cursor:pointer" onclick="openCreateChannel()">+</span>
-      </div>
-      ${voiceChs.map(c => `
-        <div class="channel-item ${state.activeChannel === c.id ? 'active' : ''}" onclick="joinVoice('${c.id}')">
-          <span class="ch-icon">🔊</span>
-          <span>${c.name}</span>
-        </div>
-      `).join('')}
-    </div>
-  `;
-  document.getElementById('channelsList').innerHTML = html;
+function startApp() {
+  buildDemo();
+  renderNav();
+  selectServer(S.servers[0].id);
   renderMembers();
+  renderUserDock();
+  updateNavAv();
 }
 
-function selectChannel(id) {
-  state.activeChannel = id;
-  const ch = state.activeServer?.channels.find(c => c.id === id);
-  if (ch) {
-    // Clear notif
-    ch.notif = 0;
-    document.getElementById('channelName').textContent = ch.name;
-    document.getElementById('channelDesc').textContent = ch.desc || '';
-    document.getElementById('msgInput').placeholder = `Message #${ch.name}...`;
-  }
-  if (!state.messages[id]) state.messages[id] = [];
-  renderChannels();
-  renderMessages();
-  scrollBottom();
+function buildDemo() {
+  const t = now();
+  S.servers = [{
+    id:'demo', name:'Mon Serveur', emoji:'🏠',
+    channels:[
+      {id:'gen',   name:'général',       type:'text',    desc:'Espace principal',notif:2},
+      {id:'intro', name:'introductions', type:'text',    desc:'Présentez-vous !'},
+      {id:'ann',   name:'annonces',      type:'announce',desc:''},
+      {id:'gaming',name:'gaming',        type:'text',    desc:'🎮 Jeux vidéo'},
+      {id:'music', name:'musique',       type:'text',    desc:'🎵 Playlists'},
+      {id:'vc1',   name:'Vocal lounge',  type:'voice'},
+      {id:'vc2',   name:'Gaming VC',     type:'voice'},
+    ],
+    members: DEMO_MEMBERS,
+  }];
+  S.messages['gen'] = [
+    {id:1,author:DEMO_MEMBERS[0],content:'Bienvenue sur Likoo ! 🎉 Enfin notre propre espace.',time:t,reactions:[{e:'🎉',c:3},{e:'❤️',c:2}]},
+    {id:2,author:DEMO_MEMBERS[1],content:'Trop bien ! J\'adore pouvoir déplacer les modules.',time:t,reactions:[]},
+    {id:3,author:DEMO_MEMBERS[2],content:'Et les thèmes en temps réel c\'est ouf 👀',time:t,reactions:[{e:'👀',c:1}]},
+    {id:4,author:DEMO_MEMBERS[3],content:'J\'ai invité tout le monde 🔥',time:t,reactions:[{e:'🔥',c:4}]},
+  ];
+  S.messages['intro'] = [
+    {id:5,author:DEMO_MEMBERS[1],content:'Salut ! Je suis Nino 🎮',time:t,reactions:[]},
+    {id:6,author:DEMO_MEMBERS[2],content:'Moi c\'est Léa, dev front 💻',time:t,reactions:[{e:'💙',c:1}]},
+  ];
+  ['gaming','music','ann','vc1','vc2'].forEach(k=>S.messages[k]=[]);
+  S.messages['dm_zara']=[{id:7,author:DEMO_MEMBERS[0],content:'Yo ! Tu as vu Likoo ? 😎',time:t,reactions:[]}];
+  S.messages['dm_nino']=[]; S.messages['dm_lea']=[];
 }
 
-function renderMembers() {
-  const srv = state.activeServer;
-  if (!srv) return;
-  const online = srv.members.filter(m => m.status !== 'offline');
-  const offline = srv.members.filter(m => m.status === 'offline');
-  const admins = online.filter(m => m.role === 'Admin');
-  const mods = online.filter(m => m.role === 'Modérateur');
-  const members = online.filter(m => m.role === 'Membre');
-  let html = '';
-  const renderGroup = (title, list) => {
-    if (!list.length) return '';
-    return `<div class="member-section">
-      <div class="member-section-title">${title} — ${list.length}</div>
-      ${list.map(m => renderMember(m)).join('')}
+// ═══════════════════════════════════════════════
+// ACCOUNT
+// ═══════════════════════════════════════════════
+function setupAccount() {
+  const n=q('#setupName').value.trim()||'Utilisateur';
+  const t=q('#setupTag').value.replace(/\D/g,'').slice(0,4).padStart(4,'0')||rnd(1000,9999).toString();
+  S.me={name:n,tag:t,av:AVATARS[rnd(0,11)],color:COLORS[rnd(0,7)],status:'online'};
+  save(); closeModal('modalSetup'); startApp();
+}
+function save(){localStorage.setItem('likoo_me',JSON.stringify(S.me));}
+function updateNavAv(){
+  const el=q('#navAv'); if(!el||!S.me)return;
+  el.innerHTML=`<span style="font-size:16px">${S.me.av}</span><div class="st-dot ${S.me.status}" id="navStatusDot"></div>`;
+  q('#navName').textContent=S.me.name;
+}
+function renderUserDock(){
+  const el=q('#userDock'); if(!el||!S.me)return;
+  el.innerHTML=`
+    <div class="dock-av" style="background:${S.me.color}20" onclick="openSettings()">
+      <span style="font-size:15px">${S.me.av}</span>
+      <div class="st-dot ${S.me.status}" id="dockDot"></div>
+    </div>
+    <div class="dock-info"><div class="dock-name" id="dockName">${S.me.name}</div><div class="dock-tag">#${S.me.tag}</div></div>
+    <div class="dock-btns">
+      <button class="dock-btn" onclick="toggleBtn(this)" title="Micro">🎙</button>
+      <button class="dock-btn" onclick="toggleBtn(this)" title="Casque">🎧</button>
     </div>`;
-  };
-  html += renderGroup('Admin', admins);
-  html += renderGroup('Modérateur', mods);
-  html += renderGroup('Membres en ligne', members);
-  if (offline.length) html += renderGroup('Hors ligne', offline);
-  // Add self
-  html = `<div class="member-section">
-    <div class="member-section-title">Toi</div>
-    ${renderMember({ name: state.me.name, avatar: state.me.avatar, color: state.me.color, status: state.me.status, role: 'Membre' })}
-  </div>` + html;
-  document.getElementById('membersList').innerHTML = html;
 }
 
-function renderMember(m) {
-  return `<div class="member">
-    <div class="member-av" style="background:${m.color}20">
-      <span style="font-size:16px">${m.avatar}</span>
-      <div class="st ${m.status}"></div>
-    </div>
-    <div>
-      <div class="member-name">${m.name}</div>
-      <div class="member-role">${m.role || ''}</div>
-    </div>
-  </div>`;
+// ═══════════════════════════════════════════════
+// NAV
+// ═══════════════════════════════════════════════
+function renderNav(){
+  const el=q('#navServers'); if(!el)return;
+  let h=`<div class="nav-server ${S.view==='dm'?'active':''}" onclick="showDM()">💬 Messages privés</div>`;
+  h+=S.servers.map(s=>`
+    <div class="nav-server ${S.activeSrv?.id===s.id&&S.view==='server'?'active':''}" onclick="selectServer('${s.id}')">
+      ${s.emoji} ${s.name}${s.channels.some(c=>c.notif)?` <span class="srv-notif">●</span>`:''}
+    </div>`).join('');
+  el.innerHTML=h;
 }
 
-function renderMessages() {
-  const msgs = state.messages[state.activeChannel] || state.messages[state.dmChannel] || [];
-  const container = document.getElementById('messages');
-  if (msgs.length === 0) {
-    const ch = state.activeServer?.channels.find(c => c.id === state.activeChannel);
-    container.innerHTML = `
-      <div style="text-align:center;padding:40px;color:var(--text3)">
-        <div style="font-size:48px;margin-bottom:16px">${state.view === 'server' ? '#' : '💬'}</div>
-        <div style="font-family:Syne,sans-serif;font-size:22px;font-weight:700;color:var(--text2);margin-bottom:8px">
-          ${state.view === 'server' ? 'Bienvenue dans #' + (ch?.name || '') : 'Début de votre conversation'}
-        </div>
-        <div style="font-size:14px">C'est le début du salon. Soyez les premiers à écrire !</div>
-      </div>
-    `;
+// ═══════════════════════════════════════════════
+// SERVER / CHANNEL / DM
+// ═══════════════════════════════════════════════
+function showHome(){
+  S.view='home'; S.activeSrv=null; S.activeCh=null; S.dmChannel=null;
+  q('#chatIcon').textContent='✦'; q('#chatName').textContent='Accueil'; q('#chatDesc').textContent='';
+  renderNav(); renderChannels(); renderMembers();
+  q('#messages').innerHTML=`<div class="empty-chat"><div class="big">💬</div><h3>Likoo</h3><p>Rejoignez un serveur ou démarrez une conversation.</p></div>`;
+}
+function showDM(){
+  S.view='dm'; S.activeSrv=null; S.activeCh=null;
+  renderNav(); renderChannels();
+  if(!S.dmChannel){
+    q('#chatIcon').textContent='💬'; q('#chatName').textContent='Messages Privés'; q('#chatDesc').textContent='';
+    q('#messages').innerHTML=`<div class="empty-chat"><div class="big">💬</div><h3>Choisissez une conversation</h3><p>Sélectionnez un contact dans la liste →</p></div>`;
+  }
+}
+function selectServer(id){
+  S.view='server'; S.activeSrv=S.servers.find(s=>s.id===id); S.dmChannel=null;
+  renderNav(); renderChannels(); renderMembers();
+  const first=S.activeSrv.channels.find(c=>c.type!=='voice');
+  if(first) selectChannel(first.id); else renderChat();
+}
+function selectChannel(id){
+  const ch=S.activeSrv?.channels.find(c=>c.id===id); if(!ch)return;
+  if(ch.type==='voice'){joinVoice(id);return;}
+  S.activeCh=id; ch.notif=0;
+  q('#chatIcon').textContent=ch.type==='announce'?'📢':'#';
+  q('#chatName').textContent=ch.name;
+  q('#chatDesc').textContent=ch.desc||'';
+  q('#msgInput').placeholder=`Message #${ch.name}…`;
+  if(!S.messages[id])S.messages[id]=[];
+  renderChannels(); renderChat();
+}
+function selectDM(id){
+  S.dmChannel=id; S.view='dm';
+  const u=DEMO_DMS.find(d=>d.id===id);
+  q('#chatIcon').textContent=u.av; q('#chatName').textContent=u.name;
+  q('#chatDesc').textContent=u.status==='online'?'🟢 En ligne':'⚫ Hors ligne';
+  q('#msgInput').placeholder=`Message à ${u.name}…`;
+  if(!S.messages[id])S.messages[id]=[];
+  renderChannels(); renderChat();
+  if(S.messages[id].length===0){
+    setTimeout(()=>{
+      pushMsg(id,{author:u,content:['Salut ! 👋','Hey !','Yo !'][rnd(0,2)]});
+    },900);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// RENDER CHANNELS
+// ═══════════════════════════════════════════════
+function renderChannels(){
+  const el=q('#channelsList'); if(!el)return;
+  if(S.view==='dm'||!S.activeSrv){
+    q('#chModIcon').textContent='💬'; q('#chModTitle').textContent='Messages Privés';
+    el.innerHTML=`<div class="ch-section-lbl">Conversations</div>
+      ${DEMO_DMS.map(u=>`<div class="ch-item ${S.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">${u.av} ${u.name}</div>`).join('')}
+      <div style="padding:8px;margin-top:6px"><button class="btn btn-primary" style="width:100%;font-size:12px;padding:7px" onclick="alert('Ajoutez un ami par son tag !')">+ Ajouter un ami</button></div>`;
     return;
   }
-  container.innerHTML = msgs.map((m, i) => {
-    const prev = msgs[i-1];
-    const sameAuthor = prev && prev.author?.name === m.author?.name && !m.system;
-    if (m.system) {
-      return `<div class="system-msg">${m.content}</div>`;
-    }
-    const author = m.author || { name: state.me.name, avatar: state.me.avatar, color: state.me.color };
-    const isMe = author.name === state.me.name;
-    const reactHtml = (m.reactions||[]).map(r =>
-      `<span class="reaction ${r.mine ? 'mine' : ''}" onclick="addReaction(${m.id},'${r.e}')">${r.e} ${r.count}</span>`
-    ).join('');
-    if (sameAuthor) {
-      return `<div class="msg-group" data-id="${m.id}">
-        <div style="width:40px;text-align:center;color:var(--text3);font-size:10px;padding-top:2px;flex-shrink:0">${m.time}</div>
-        <div class="msg-body">
-          ${m.file ? renderFile(m) : `<div class="msg-content">${m.content}</div>`}
-          <div>${reactHtml}</div>
-        </div>
-        <div class="msg-actions">
-          <span class="msg-action" onclick="addReactionUI(${m.id})" title="Réaction">😊</span>
-          ${isMe ? `<span class="msg-action" title="Modifier" onclick="editMsg(${m.id})">✏️</span>` : ''}
-          ${isMe ? `<span class="msg-action" style="color:var(--red)" title="Supprimer" onclick="deleteMsg(${m.id})">🗑</span>` : ''}
-        </div>
-      </div>`;
-    }
-    return `<div class="msg-group" data-id="${m.id}">
-      <div class="avatar" style="background:${author.color}20;font-size:20px">${author.avatar}</div>
+  const srv=S.activeSrv;
+  q('#chModIcon').textContent='#'; q('#chModTitle').textContent=srv.name;
+  const texts=srv.channels.filter(c=>c.type!=='voice');
+  const vcs=srv.channels.filter(c=>c.type==='voice');
+  el.innerHTML=`
+    <div class="ch-section-lbl">Salons<span class="ch-add-btn" onclick="openModal('modalCreateChannel')">+</span></div>
+    ${texts.map(c=>`<div class="ch-item ${S.activeCh===c.id?'active':''}" onclick="selectChannel('${c.id}')">
+      <span class="ch-hash">${c.type==='announce'?'📢':'#'}</span>${c.name}${c.notif?`<span class="ch-notif">${c.notif}</span>`:''}
+    </div>`).join('')}
+    <div class="ch-section-lbl" style="margin-top:6px">Vocaux<span class="ch-add-btn" onclick="openModal('modalCreateChannel')">+</span></div>
+    ${vcs.map(c=>`<div class="ch-item ${S.activeCh===c.id?'active':''}" onclick="selectChannel('${c.id}')">🔊 ${c.name}</div>`).join('')}
+    ${S.inVoice?`<div class="voice-strip">🔊 ${S.inVoice} <span class="voice-leave" onclick="leaveVoice()">✕ Quitter</span></div>`:''}`;
+}
+
+// ═══════════════════════════════════════════════
+// RENDER MEMBERS
+// ═══════════════════════════════════════════════
+function renderMembers(){
+  const el=q('#membersList'); if(!el)return;
+  const srv=S.activeSrv; if(!srv){el.innerHTML='';return;}
+  const grps=[
+    {l:'Admin',m:srv.members.filter(m=>m.role==='Admin'&&m.status!=='offline')},
+    {l:'Modérateur',m:srv.members.filter(m=>m.role==='Modérateur'&&m.status!=='offline')},
+    {l:'En ligne',m:srv.members.filter(m=>m.role==='Membre'&&m.status==='online')},
+    {l:'Absent',m:srv.members.filter(m=>m.status==='away'&&m.role==='Membre')},
+    {l:'Hors ligne',m:srv.members.filter(m=>m.status==='offline')},
+  ].filter(g=>g.m.length);
+  const self=[{name:S.me.name,av:S.me.av,color:S.me.color,status:S.me.status,role:'Membre'}];
+  let h=mkMemGroup('Toi',self);
+  grps.forEach(g=>h+=mkMemGroup(`${g.l} — ${g.m.length}`,g.m));
+  el.innerHTML=h;
+}
+function mkMemGroup(label,list){
+  return`<div class="mem-lbl">${label}</div>${list.map(m=>`
+    <div class="mem-item">
+      <div class="mem-av" style="background:${m.color}18"><span>${m.av||m.avatar}</span><div class="mem-dot ${m.status}" style="border-color:var(--bg2)"></div></div>
+      <div><div class="mem-name">${m.name}</div><div class="mem-role">${m.role||''}</div></div>
+    </div>`).join('')}`;
+}
+function toggleMembers(){
+  S.membersVisible=!S.membersVisible;
+  const z=q('#zoneRight');
+  z.style.display=S.membersVisible?'flex':'none';
+}
+
+// ═══════════════════════════════════════════════
+// RENDER CHAT
+// ═══════════════════════════════════════════════
+function renderChat(){
+  const key=activeKey();
+  const msgs=key?(S.messages[key]||[]):[];
+  const el=q('#messages'); if(!el)return;
+  if(!key||msgs.length===0){
+    const ch=S.activeSrv?.channels.find(c=>c.id===S.activeCh);
+    el.innerHTML=`<div class="empty-chat">
+      <div class="big">${S.view==='dm'?'💬':'#'}</div>
+      <h3>${S.view==='dm'?'Début de la conversation':'#'+(ch?.name||'salon')}</h3>
+      <p style="font-size:13px">${key?'Soyez le premier à écrire ici !':'Sélectionnez un salon.'}</p>
+    </div>`;
+    return;
+  }
+  el.innerHTML=msgs.map((m,i)=>{
+    if(m.system)return`<div class="sys-line">${m.content}</div>`;
+    const prev=msgs[i-1];
+    const compact=S.compact&&prev&&!prev.system&&prev.author?.name===m.author?.name;
+    const auth=m.author||S.me;
+    const isMe=auth.name===S.me.name;
+    const reacts=(m.reactions||[]).map(r=>`<span class="react-chip ${r.mine?'mine':''}" onclick="toggleReact('${key}',${m.id},'${r.e}')">${r.e} ${r.c}</span>`).join('');
+    const body=m.file?(m.file.type.startsWith('image/')?`<img src="${m.file.data}" class="img-msg">`:`<div class="file-chip">📄 ${m.file.name}</div>`):`<div class="msg-content">${esc(m.content)}</div>`;
+    const acts=`<div class="msg-acts">
+      <button class="msg-act-btn" onclick="quickReact('${key}',${m.id})">😊</button>
+      ${isMe?`<button class="msg-act-btn" onclick="editMsg('${key}',${m.id})">✏️</button>`:''}
+      ${isMe?`<button class="msg-act-btn" style="color:var(--red)" onclick="delMsg('${key}',${m.id})">🗑</button>`:''}
+    </div>`;
+    if(compact)return`<div class="msg-group">
+      <div style="width:36px;text-align:center;font-size:10px;color:var(--text4);padding-top:3px;flex-shrink:0">${m.time}</div>
+      <div class="msg-body">${body}<div>${reacts}</div></div>${acts}
+    </div>`;
+    return`<div class="msg-group">
+      <div class="msg-av" style="background:${auth.color}18">${auth.av||auth.avatar}</div>
       <div class="msg-body">
-        <div class="msg-meta">
-          <span class="msg-author" style="color:${author.color}">${author.name}</span>
-          <span class="msg-time">${m.time}</span>
-        </div>
-        ${m.file ? renderFile(m) : `<div class="msg-content">${escHtml(m.content)}</div>`}
-        <div>${reactHtml}</div>
-      </div>
-      <div class="msg-actions">
-        <span class="msg-action" onclick="addReactionUI(${m.id})">😊</span>
-        ${isMe ? `<span class="msg-action" onclick="editMsg(${m.id})">✏️</span>` : ''}
-        ${isMe ? `<span class="msg-action" style="color:var(--red)" onclick="deleteMsg(${m.id})">🗑</span>` : ''}
-      </div>
+        <div class="msg-meta"><span class="msg-author" style="color:${auth.color}">${auth.name}</span><span class="msg-time">${m.time}</span></div>
+        ${body}<div>${reacts}</div>
+      </div>${acts}
     </div>`;
   }).join('');
+  setTimeout(()=>{const e=q('#messages');if(e)e.scrollTop=e.scrollHeight;},30);
 }
 
-function renderFile(m) {
-  if (m.file.type.startsWith('image/')) {
-    return `<img src="${m.file.data}" alt="${m.file.name}" class="img-msg">`;
-  }
-  return `<div class="file-preview">
-    <span class="file-icon">📄</span>
-    <div><div class="file-name">${m.file.name}</div><div class="file-size">${m.file.size}</div></div>
-  </div>`;
+// ═══════════════════════════════════════════════
+// MESSAGING
+// ═══════════════════════════════════════════════
+function activeKey(){return S.view==='dm'?S.dmChannel:S.activeCh;}
+function pushMsg(key,data){
+  if(!S.messages[key])S.messages[key]=[];
+  S.messages[key].push({id:Date.now(),time:now(),reactions:[],...data});
+  if(activeKey()===key)renderChat();
 }
-
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function sendMsg(){
+  const inp=q('#msgInput');const text=inp?.value.trim();const key=activeKey();
+  if(!text||!key)return;
+  pushMsg(key,{author:{name:S.me.name,av:S.me.av,color:S.me.color},content:text});
+  inp.value='';inp.style.height='';
+  if(Math.random()>.45&&S.view==='server')setTimeout(()=>simReply(key),900+rnd(0,1800));
+  if(S.view==='dm')setTimeout(()=>simDM(key),700+rnd(0,1200));
 }
-
-// === MESSAGING ===
-function now() {
-  return new Date().toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
+function simReply(key){
+  const online=DEMO_MEMBERS.filter(m=>m.status==='online');
+  const m=online[rnd(0,online.length-1)];
+  const lines=['Trop bien !','Haha oui 😂','Je suis d\'accord','On vocal ?','++','❤️','Bien joué !'];
+  pushMsg(key,{author:m,content:lines[rnd(0,lines.length-1)]});
 }
-
-function getActiveKey() {
-  return state.view === 'dm' ? state.dmChannel : state.activeChannel;
+function simDM(key){
+  if(S.dmChannel!==key)return;
+  const u=DEMO_DMS.find(d=>d.id===key);if(!u)return;
+  const lines=['😊','OK !','Ouais !','👍','Vraiment ?','Haha'];
+  pushMsg(key,{author:u,content:lines[rnd(0,lines.length-1)]});
 }
-
-function sendMessage() {
-  const input = document.getElementById('msgInput');
-  const text = input.value.trim();
-  if (!text) return;
-  const key = getActiveKey();
-  if (!key) return;
-  if (!state.messages[key]) state.messages[key] = [];
-  const msg = {
-    id: Date.now(),
-    author: { name: state.me.name, avatar: state.me.avatar, color: state.me.color },
-    content: text,
-    time: now(),
-    reactions: []
-  };
-  state.messages[key].push(msg);
-  input.value = '';
-  input.style.height = '';
-  renderMessages();
-  scrollBottom();
-  // Simulate reply sometimes
-  if (Math.random() > 0.6 && state.view === 'server') {
-    setTimeout(() => simulateReply(key), 1500 + Math.random() * 2000);
+let typT;
+function simTyping(){
+  if(Math.random()>.65&&S.view==='server'){
+    const m=DEMO_MEMBERS.filter(m=>m.status==='online')[rnd(0,1)];
+    const el=q('#typingHint');if(el)el.textContent=`${m.name} est en train d'écrire…`;
+    clearTimeout(typT);typT=setTimeout(()=>{const e=q('#typingHint');if(e)e.textContent='';},2000);
   }
 }
-
-function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+function toggleReact(key,id,e){
+  const msg=S.messages[key]?.find(m=>m.id===id);if(!msg)return;
+  const ex=msg.reactions.find(r=>r.e===e);
+  if(ex){ex.mine?ex.c--:ex.c++;ex.mine=!ex.mine;if(ex.c<=0)msg.reactions=msg.reactions.filter(r=>r.e!==e);}
+  else msg.reactions.push({e,c:1,mine:true});
+  renderChat();
+}
+function quickReact(key,id){toggleReact(key,id,['❤️','👍','😂','🔥','🎉','👀'][rnd(0,5)]);}
+function editMsg(key,id){const msg=S.messages[key]?.find(m=>m.id===id);if(!msg)return;const t=prompt('Modifier :',msg.content);if(t?.trim()){msg.content=t.trim()+' *(modifié)*';renderChat();}}
+function delMsg(key,id){S.messages[key]=S.messages[key].filter(m=>m.id!==id);renderChat();}
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}}
+function autoResize(t){t.style.height='';t.style.height=Math.min(t.scrollHeight,100)+'px';}
+function handleFile(inp){
+  const file=inp.files[0];if(!file)return;const key=activeKey();if(!key)return;
+  const r=new FileReader();
+  r.onload=e=>{pushMsg(key,{author:{name:S.me.name,av:S.me.av,color:S.me.color},content:'',file:{name:file.name,type:file.type,size:fmtB(file.size),data:e.target.result}});};
+  r.readAsDataURL(file);inp.value='';
 }
 
-function autoResize(t) {
-  t.style.height = '';
-  t.style.height = Math.min(t.scrollHeight, 120) + 'px';
-}
-
-let typingTimeout;
-function simulateTyping() {
-  if (Math.random() > 0.7 && state.view === 'server') {
-    const member = DEMO_MEMBERS[Math.floor(Math.random()*DEMO_MEMBERS.length)];
-    const ti = document.getElementById('typingIndicator');
-    ti.textContent = `${member.name} est en train d'écrire...`;
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => ti.textContent = '', 2000);
-  }
-}
-
-function simulateReply(key) {
-  const member = DEMO_MEMBERS.filter(m => m.status === 'online')[Math.floor(Math.random()*3)];
-  const replies = [
-    'Trop bien ça !', 'Haha oui complètement 😂', 'Je suis d\'accord',
-    'On peut en parler en vocal ?', 'Attends t\'as raison !', '++', '❤️',
-    'Ah ouais c\'est pas mal', 'Franchement bien joué', 'On s\'appelle ce soir ?'
-  ];
-  const msg = {
-    id: Date.now(),
-    author: member,
-    content: replies[Math.floor(Math.random()*replies.length)],
-    time: now(),
-    reactions: []
-  };
-  if (!state.messages[key]) state.messages[key] = [];
-  state.messages[key].push(msg);
-  if (state.activeChannel === key || state.dmChannel === key) {
-    renderMessages();
-    scrollBottom();
-  }
-}
-
-function deleteMsg(id) {
-  const key = getActiveKey();
-  state.messages[key] = state.messages[key].filter(m => m.id !== id);
-  renderMessages();
-}
-
-function editMsg(id) {
-  const key = getActiveKey();
-  const msg = state.messages[key].find(m => m.id === id);
-  if (!msg) return;
-  const txt = prompt('Modifier le message:', msg.content);
-  if (txt !== null && txt.trim()) {
-    msg.content = txt.trim() + ' (modifié)';
-    renderMessages();
-  }
-}
-
-function addReaction(id, emoji) {
-  const key = getActiveKey();
-  const msg = state.messages[key]?.find(m => m.id === id);
-  if (!msg) return;
-  const ex = msg.reactions.find(r => r.e === emoji);
-  if (ex) {
-    if (ex.mine) { ex.count--; ex.mine = false; if (ex.count <= 0) msg.reactions = msg.reactions.filter(r => r.e !== emoji); }
-    else { ex.count++; ex.mine = true; }
-  } else {
-    msg.reactions.push({ e: emoji, count: 1, mine: true });
-  }
-  renderMessages();
-}
-
-function addReactionUI(id) {
-  const emojis = ['❤️','👍','😂','🔥','🎉','👀','😎','💯'];
-  const e = emojis[Math.floor(Math.random()*emojis.length)];
-  addReaction(id, e);
-}
-
-function scrollBottom() {
-  const c = document.getElementById('messages');
-  c.scrollTop = c.scrollHeight;
-}
-
-function handleFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const key = getActiveKey();
-  const reader = new FileReader();
-  reader.onload = e => {
-    const msg = {
-      id: Date.now(),
-      author: { name: state.me.name, avatar: state.me.avatar, color: state.me.color },
-      content: '',
-      time: now(),
-      reactions: [],
-      file: { name: file.name, type: file.type, size: formatBytes(file.size), data: e.target.result }
-    };
-    if (!state.messages[key]) state.messages[key] = [];
-    state.messages[key].push(msg);
-    renderMessages();
-    scrollBottom();
-  };
-  reader.readAsDataURL(file);
-  input.value = '';
-}
-
-function formatBytes(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-  return (b/1048576).toFixed(1) + ' MB';
-}
-
-// === SERVERS / CHANNELS ===
-function openCreateServer() { document.getElementById('createServerModal').classList.add('open'); }
-function openCreateChannel() { document.getElementById('createChannelModal').classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-function createServer() {
-  const name = document.getElementById('serverNameInput').value.trim();
-  const emoji = document.getElementById('serverEmojiInput').value.trim() || '🌐';
-  if (!name) return;
-  const id = 'srv_' + Date.now();
-  const srv = {
-    id, name, emoji,
-    color: COLORS[Math.floor(Math.random()*COLORS.length)],
-    channels: [
-      { id: id+'_gen', name: 'général', type: 'text', desc: 'Le salon principal' },
-      { id: id+'_vocal', name: 'Vocal', type: 'voice' }
-    ],
-    members: [DEMO_MEMBERS[Math.floor(Math.random()*3)]]
-  };
-  state.servers.push(srv);
-  document.getElementById('serverNameInput').value = '';
-  document.getElementById('serverEmojiInput').value = '';
-  closeModal('createServerModal');
-  renderServers();
-  selectServer(id);
-  // System message
-  const key = id + '_gen';
-  state.messages[key] = [{ system: true, content: `${state.me.name} a créé le serveur ${name} 🎉`, id: Date.now() }];
-}
-
-function createChannel() {
-  if (!state.activeServer) return;
-  const name = document.getElementById('newChannelName').value.trim().toLowerCase().replace(/\s+/g,'-') || 'nouveau-salon';
-  const type = document.querySelector('[name=chType]:checked').value;
-  const ch = { id: state.activeServer.id + '_' + name + '_' + Date.now(), name, type, desc: '' };
-  state.activeServer.channels.push(ch);
-  document.getElementById('newChannelName').value = '';
-  closeModal('createChannelModal');
+// ═══════════════════════════════════════════════
+// VOICE
+// ═══════════════════════════════════════════════
+function joinVoice(id){
+  const ch=S.activeSrv?.channels.find(c=>c.id===id);
+  S.inVoice={id,name:ch?.name||'Vocal',muted:false,deafened:false,streaming:false,members:[S.me,...DEMO_MEMBERS.slice(0,2)]};
+  S.activeCh=id;
   renderChannels();
+  renderVoiceControls();
+  updateTitlebar('Vocal: '+S.inVoice.name);
 }
-
-// === DMs ===
-const DM_USERS = [
-  { id: 'dm_zara', ...DEMO_MEMBERS[0] },
-  { id: 'dm_nino', ...DEMO_MEMBERS[1] },
-  { id: 'dm_lea', ...DEMO_MEMBERS[2] }
-];
-
-function showDM() {
-  state.view = 'dm';
-  state.activeServer = null;
-  state.activeChannel = null;
-  state.dmChannel = null;
-  document.getElementById('serverName').textContent = 'Messages Privés';
-  renderServers();
-  let html = `<div style="padding:8px 16px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Messages directs</div>`;
-  html += DM_USERS.map(u => `
-    <div class="dm-item ${state.dmChannel === u.id ? 'active' : ''}" onclick="selectDM('${u.id}')">
-      <div class="dm-av" style="background:${u.color}20;font-size:18px">${u.avatar}</div>
-      <div>
-        <div class="dm-name">${u.name}</div>
-        <div class="dm-status">${u.status === 'online' ? '<span class="online-badge"></span> En ligne' : 'Hors ligne'}</div>
-      </div>
+function leaveVoice(){
+  S.inVoice=null;S.activeCh=null;
+  renderChannels();
+  q('#voicePanel')?.remove();
+  updateTitlebar('Accueil');
+}
+function toggleMute(){
+  if(!S.inVoice)return;
+  S.inVoice.muted=!S.inVoice.muted;
+  renderVoiceControls();
+}
+function toggleDeafen(){
+  if(!S.inVoice)return;
+  S.inVoice.deafened=!S.inVoice.deafened;
+  if(S.inVoice.deafened)S.inVoice.muted=true;
+  renderVoiceControls();
+}
+function toggleStream(){
+  if(!S.inVoice)return;
+  S.inVoice.streaming=!S.inVoice.streaming;
+  renderVoiceControls();
+}
+function renderVoiceControls(){
+  let panel=q('#voicePanel');
+  if(!S.inVoice){
+    if(panel)panel.remove();
+    return;
+  }
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='voicePanel';
+    panel.className='voice-panel';
+    q('#messages')?.parentElement.insertBefore(panel,q('#messages'));
+  }
+  const members=S.inVoice.members.map(m=>`
+    <div class="voice-member">
+      <div class="vmem-av" style="background:${m.color}20"><span>${m.av}</span></div>
+      <div class="vmem-info"><div class="vmem-name">${m.name}</div><div class="vmem-status">En vocal</div></div>
+      ${m.name===S.me.name?'<div style="font-size:11px;color:var(--text4);">C\'est toi</div>':''}
+    </div>`).join('');
+  panel.innerHTML=`
+    <div class="voice-header">
+      <div>🔊 ${S.inVoice.name} — ${S.inVoice.members.length} personne(s)</div>
+      <button class="voice-close" onclick="leaveVoice()">✕</button>
     </div>
-  `).join('');
-  html += `<div style="padding:8px 16px;margin-top:8px">
-    <button class="btn btn-primary" style="width:100%;font-size:13px" onclick="alert('Fonctionnalité : Ajouter un ami par tag (ex: Zara#4521)')">+ Ajouter un ami</button>
-  </div>`;
-  document.getElementById('channelsList').innerHTML = html;
-  document.getElementById('membersList').innerHTML = '';
-  document.getElementById('channelName').textContent = 'Messages Privés';
-  document.getElementById('channelDesc').textContent = 'Choisissez une conversation';
-  document.getElementById('messages').innerHTML = `
-    <div style="text-align:center;padding:60px 40px;color:var(--text3)">
-      <div style="font-size:64px;margin-bottom:16px">💬</div>
-      <div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:var(--text2);margin-bottom:8px">Vos messages</div>
-      <div>Sélectionnez une conversation pour commencer</div>
+    <div class="voice-members">${members}</div>
+    <div class="voice-controls">
+      <button class="voice-btn ${S.inVoice.muted?'active':''}" onclick="toggleMute()" title="Micro">
+        <span class="voice-icon">🎙</span><span class="voice-label">Micro</span>
+      </button>
+      <button class="voice-btn ${S.inVoice.deafened?'active':''}" onclick="toggleDeafen()" title="Casque">
+        <span class="voice-icon">🎧</span><span class="voice-label">Casque</span>
+      </button>
+      <button class="voice-btn ${S.inVoice.streaming?'active':''}" onclick="toggleStream()" title="Stream">
+        <span class="voice-icon">📹</span><span class="voice-label">Stream</span>
+      </button>
+      <button class="voice-btn" style="background:var(--red);color:white" onclick="leaveVoice()" title="Quitter">
+        <span class="voice-icon">📞</span><span class="voice-label">Quitter</span>
+      </button>
     </div>
   `;
 }
 
-function goHome() { showDM(); }
+// ═══════════════════════════════════════════════
+// SERVERS / CHANNELS MANAGEMENT
+// ═══════════════════════════════════════════════
+function createServer(){
+  const name=q('#srvName')?.value.trim();if(!name)return;
+  const emoji=q('#srvEmoji')?.value.trim()||'🌐';
+  const id='srv_'+Date.now();
+  S.servers.push({id,name,emoji,
+    channels:[{id:id+'_g',name:'général',type:'text',desc:'Principal'},{id:id+'_v',name:'Vocal',type:'voice'}],
+    members:[DEMO_MEMBERS[rnd(0,3)]]});
+  S.messages[id+'_g']=[{id:Date.now(),system:true,content:`${S.me.name} a créé "${name}" 🎉`,time:now(),reactions:[]}];
+  q('#srvName').value='';q('#srvEmoji').value='';
+  closeModal('modalCreateServer');selectServer(id);
+}
+let newChType='text';
+function selChType(el){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));el.classList.add('sel');newChType=el.dataset.type;}
+function createChannel(){
+  if(!S.activeSrv)return;
+  const name=q('#newChName')?.value.trim().toLowerCase().replace(/\s+/g,'-')||'nouveau';
+  S.activeSrv.channels.push({id:S.activeSrv.id+'_'+name+'_'+Date.now(),name,type:newChType,desc:''});
+  q('#newChName').value='';closeModal('modalCreateChannel');renderChannels();
+}
 
-function selectDM(id) {
-  state.dmChannel = id;
-  state.view = 'dm';
-  const user = DM_USERS.find(u => u.id === id);
-  if (!state.messages[id]) state.messages[id] = [];
-  document.getElementById('channelName').textContent = user.name;
-  document.getElementById('channelDesc').textContent = user.status === 'online' ? '🟢 En ligne' : '⚫ Hors ligne';
-  document.getElementById('msgInput').placeholder = `Message ${user.name}...`;
-  // Re-render DM list
-  showDM();
-  state.dmChannel = id;
-  const dmHtml = document.getElementById('channelsList').innerHTML.replace(
-    `dm-item `, `dm-item `
-  );
-  renderMessages();
-  scrollBottom();
-  // Simulate reply
-  if (Math.random() > 0.5 && state.messages[id].length === 0) {
-    setTimeout(() => {
-      const greets = ['Salut ! 👋', 'Hey, ça va ?', 'Yo ! T\'es là ?'];
-      state.messages[id].push({ author: user, content: greets[Math.floor(Math.random()*greets.length)], time: now(), reactions: [] });
-      renderMessages();
-      scrollBottom();
-    }, 800);
+// ═══════════════════════════════════════════════
+// EMOJI
+// ═══════════════════════════════════════════════
+function buildEmoji(){
+  const el=q('#emojiPicker');if(!el)return;
+  el.innerHTML=`<div class="emoji-grid">${EMOJIS.map(e=>`<button class="emoji-cell" onclick="insEmoji('${e}')">${e}</button>`).join('')}</div>`;
+}
+function toggleEmoji(){q('#emojiPicker')?.classList.toggle('open');}
+function insEmoji(e){const i=q('#msgInput');if(i){i.value+=e;i.focus();}q('#emojiPicker')?.classList.remove('open');}
+
+// ═══════════════════════════════════════════════
+// MODALS
+// ═══════════════════════════════════════════════
+function openModal(id){q(`#${id}`)?.classList.add('open');}
+function closeModal(id){q(`#${id}`)?.classList.remove('open');}
+function openSettings(){
+  if(S.me)q('#setName').value=S.me.name;
+  openModal('modalSettings');
+}
+function saveSettings(){
+  if(S.me){
+    const n=q('#setName')?.value.trim()||S.me.name;
+    S.me.name=n;save();
+    const el=q('#dockName');if(el)el.textContent=n;
+    q('#navName').textContent=n;
   }
+  localStorage.setItem('likoo_theme',S.theme);
+  localStorage.setItem('likoo_layout',S.layout);
+  closeModal('modalSettings');
 }
 
-// === VOICE ===
-function joinVoice(id) {
-  const ch = state.activeServer?.channels.find(c => c.id === id);
-  if (!ch) return;
-  const existing = document.getElementById('voiceIndicator');
-  if (existing) existing.remove();
-  const vi = document.createElement('div');
-  vi.id = 'voiceIndicator';
-  vi.className = 'voice-indicator';
-  vi.innerHTML = `🔊 <span>${ch.name}</span> <span style="margin-left:auto;cursor:pointer" onclick="leaveVoice()">✕</span>`;
-  document.querySelector('.user-panel').before(vi);
-  state.activeChannel = id;
-  renderChannels();
+// ═══════════════════════════════════════════════
+// SETTINGS: STATUS
+// ═══════════════════════════════════════════════
+function setStatus(el){
+  document.querySelectorAll('.st-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  const s=el.dataset.status;if(!S.me)return;S.me.status=s;save();
+  const colors={online:'var(--green)',away:'#f59e0b',dnd:'var(--red)',offline:'#7f8c8d'};
+  ['navStatusDot','dockDot'].forEach(id=>{const d=q('#'+id);if(d){d.className='st-dot '+s;d.style.background=colors[s];}});
 }
 
-function leaveVoice() {
-  document.getElementById('voiceIndicator')?.remove();
+// ═══════════════════════════════════════════════
+// SETTINGS: THEMES
+// ═══════════════════════════════════════════════
+const THEME_MAP={
+  amber:{bg:'#faf6ef',bg2:'#f2ebe0',bg3:'#e8dece',bg4:'#dfd3be',panel:'#ece8f6',panel2:'#e3ddf2',accent:'#e8850a',accent2:'#f5a033',accent3:'#fbbf60',nav:'#5c3d1e',nav2:'#7a5230',text:'#2c1a08',text2:'#6b4a28',text3:'#a07850',text4:'#c4a882',border:'rgba(92,61,30,0.12)',border2:'rgba(92,61,30,0.22)',shadow:'rgba(92,61,30,0.10)',red:'#c0392b',green:'#27ae60',hl:'rgba(232,133,10,0.15)',hlb:'rgba(232,133,10,0.5)'},
+  violet:{bg:'#f0edf8',bg2:'#e8e3f5',bg3:'#ddd6f0',bg4:'#cfc7e8',panel:'#ece8f6',panel2:'#e3ddf2',accent:'#8b5cf6',accent2:'#a78bfa',accent3:'#c4b5fd',nav:'#3b1f6e',nav2:'#4c2d87',text:'#1e1033',text2:'#4a3a72',text3:'#8b7ab8',text4:'#b8acd6',border:'rgba(139,92,246,0.14)',border2:'rgba(139,92,246,0.28)',shadow:'rgba(109,40,217,0.10)',red:'#ef4444',green:'#22c55e',hl:'rgba(139,92,246,0.12)',hlb:'rgba(139,92,246,0.5)'},
+  night:{bg:'#0f1117',bg2:'#161922',bg3:'#1e2130',bg4:'#252a3a',panel:'#1a1d2e',panel2:'#20233a',accent:'#38bdf8',accent2:'#7dd3fc',accent3:'#bae6fd',nav:'#090c14',nav2:'#0e1220',text:'#e2e8f0',text2:'#94a3b8',text3:'#64748b',text4:'#475569',border:'rgba(56,189,248,0.12)',border2:'rgba(56,189,248,0.25)',shadow:'rgba(0,0,0,0.3)',red:'#f87171',green:'#4ade80',hl:'rgba(56,189,248,0.10)',hlb:'rgba(56,189,248,0.5)'},
+  sakura:{bg:'#fff0f5',bg2:'#ffe4ee',bg3:'#ffd6e5',bg4:'#ffc2d7',panel:'#fce8f1',panel2:'#f9dce8',accent:'#e879a0',accent2:'#f472b6',accent3:'#fbcfe8',nav:'#831843',nav2:'#9d174d',text:'#3b0018',text2:'#831843',text3:'#be185d',text4:'#db2777',border:'rgba(232,121,160,0.15)',border2:'rgba(232,121,160,0.30)',shadow:'rgba(131,24,67,0.10)',red:'#dc2626',green:'#16a34a',hl:'rgba(232,121,160,0.12)',hlb:'rgba(232,121,160,0.55)'},
+  forest:{bg:'#0d1f13',bg2:'#122018',bg3:'#182b1e',bg4:'#1f3327',panel:'#162418',panel2:'#1c2e1e',accent:'#4ade80',accent2:'#86efac',accent3:'#bbf7d0',nav:'#052010',nav2:'#063018',text:'#d1fae5',text2:'#6ee7b7',text3:'#34d399',text4:'#10b981',border:'rgba(74,222,128,0.12)',border2:'rgba(74,222,128,0.22)',shadow:'rgba(0,0,0,0.30)',red:'#f87171',green:'#4ade80',hl:'rgba(74,222,128,0.10)',hlb:'rgba(74,222,128,0.5)'},
+  golden:{bg:'#fffbeb',bg2:'#fef3c7',bg3:'#fde68a',bg4:'#fcd34d',panel:'#fff8e1',panel2:'#fef0c0',accent:'#d97706',accent2:'#f59e0b',accent3:'#fcd34d',nav:'#78350f',nav2:'#92400e',text:'#3d1a00',text2:'#78350f',text3:'#b45309',text4:'#d97706',border:'rgba(217,119,6,0.15)',border2:'rgba(217,119,6,0.30)',shadow:'rgba(120,53,15,0.10)',red:'#dc2626',green:'#16a34a',hl:'rgba(217,119,6,0.12)',hlb:'rgba(217,119,6,0.55)'},
+};
+
+function applyTheme(el){
+  const t=el.dataset.theme;
+  document.querySelectorAll('.theme-card').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  applyThemeVal(t);
+}
+function applyThemeVal(t){
+  S.theme=t;
+  const th=THEME_MAP[t];if(!th)return;
+  const r=document.documentElement.style;
+  r.setProperty('--bg',th.bg);r.setProperty('--bg2',th.bg2);r.setProperty('--bg3',th.bg3);r.setProperty('--bg4',th.bg4);
+  r.setProperty('--panel',th.panel);r.setProperty('--panel2',th.panel2);
+  r.setProperty('--accent',th.accent);r.setProperty('--accent2',th.accent2);r.setProperty('--accent3',th.accent3);
+  r.setProperty('--nav',th.nav);r.setProperty('--nav2',th.nav2);
+  r.setProperty('--text',th.text);r.setProperty('--text2',th.text2);r.setProperty('--text3',th.text3);r.setProperty('--text4',th.text4);
+  r.setProperty('--border',th.border);r.setProperty('--border2',th.border2);
+  r.setProperty('--shadow',th.shadow);r.setProperty('--red',th.red);r.setProperty('--green',th.green);
+  r.setProperty('--zone-hl',th.hl);r.setProperty('--zone-border',th.hlb);
+  // Update theme card active state
+  document.querySelectorAll('.theme-card').forEach(c=>{c.classList.toggle('active',c.dataset.theme===t);});
 }
 
-// === MISC ===
-function toggleMembers() {
-  const bar = document.getElementById('membersBar');
-  state.membersVisible = !state.membersVisible;
-  bar.classList.toggle('hidden', !state.membersVisible);
+// ═══════════════════════════════════════════════
+// SETTINGS: LAYOUTS
+// ═══════════════════════════════════════════════
+/*
+  Layouts définissent:
+  - grid-template-columns du workspace
+  - quel module est dans quelle zone
+  - visibilité des zones
+*/
+const LAYOUTS = {
+  'default':    {cols:'240px 1fr 220px', left:'mod-channels', center:'mod-chat', right:'mod-members', showRight:true},
+  'focus':      {cols:'220px 1fr',       left:'mod-channels', center:'mod-chat', right:null,           showRight:false},
+  'compact':    {cols:'200px 1fr 180px', left:'mod-channels', center:'mod-chat', right:'mod-members',  showRight:true},
+  'wide-chat':  {cols:'1fr 220px',       left:null,           center:'mod-chat', right:'mod-channels', showRight:true},
+  'reversed':   {cols:'220px 1fr 240px', left:'mod-members',  center:'mod-chat', right:'mod-channels', showRight:true},
+  'minimal':    {cols:'1fr',             left:null,           center:'mod-chat', right:null,           showRight:false},
+};
+
+function applyLayout(el){
+  const l=el.dataset.layout;
+  document.querySelectorAll('.layout-card').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  applyLayoutVal(l);
 }
+function applyLayoutVal(l){
+  S.layout=l;
+  const cfg=LAYOUTS[l];if(!cfg)return;
+  const ws=q('#workspace');
+  ws.style.transition='grid-template-columns .4s cubic-bezier(.4,0,.2,1)';
+  ws.style.gridTemplateColumns=cfg.cols;
 
-function toggleMic(btn) { btn.style.color = btn.style.color === 'var(--red)' ? '' : 'var(--red)'; }
-function toggleDeaf(btn) { btn.style.color = btn.style.color === 'var(--red)' ? '' : 'var(--red)'; }
+  const zl=q('#zoneLeft'), zc=q('#zoneCenter'), zr=q('#zoneRight');
 
-function openSettings() {
-  document.getElementById('settingsName').value = state.me.name;
-  document.getElementById('settingsModal').classList.add('open');
-}
+  // Show/hide zones
+  zl.style.display=(cfg.left||cfg.cols.split(' ').length>1&&cfg.left!==null)?'flex':'none';
+  zr.style.display=cfg.showRight?'flex':'none';
 
-function saveSettings() {
-  const name = document.getElementById('settingsName').value.trim() || state.me.name;
-  state.me.name = name;
-  localStorage.setItem('likoo_user', JSON.stringify(state.me));
-  document.getElementById('myName').textContent = name;
-  closeModal('settingsModal');
-}
-
-function setStatus(s) {
-  state.me.status = s;
-  const colors = { online: 'var(--green)', away: '#fbbf24', dnd: 'var(--red)', offline: 'var(--text3)' };
-  document.querySelector('.status-dot').style.background = colors[s];
-}
-
-function buildEmojiPicker() {
-  const picker = document.getElementById('emojiPicker');
-  picker.innerHTML = `<div class="emoji-grid">${EMOJIS.map(e => `<button class="emoji-btn" onclick="insertEmoji('${e}')">${e}</button>`).join('')}</div>`;
-}
-
-function toggleEmoji() { document.getElementById('emojiPicker').classList.toggle('open'); }
-function insertEmoji(e) {
-  const inp = document.getElementById('msgInput');
-  inp.value += e; inp.focus();
-  document.getElementById('emojiPicker').classList.remove('open');
-}
-
-// Click outside to close
-document.addEventListener('click', e => {
-  if (!e.target.closest('#emojiPicker') && !e.target.closest('.input-btn')) {
-    document.getElementById('emojiPicker').classList.remove('open');
+  // Move modules to correct zones
+  function moveToZone(modId, zoneEl){
+    if(!modId||!zoneEl)return;
+    const mod=q('#'+modId);
+    if(mod&&mod.parentElement!==zoneEl)zoneEl.appendChild(mod);
   }
-  if (e.target.classList.contains('modal-overlay')) {
-    e.target.classList.remove('open');
+  if(cfg.left)moveToZone(cfg.left,zl); else zl.style.display='none';
+  moveToZone(cfg.center,zc);
+  if(cfg.right&&cfg.showRight)moveToZone(cfg.right,zr);
+
+  S.membersVisible=cfg.showRight;
+
+  // Update layout card active
+  document.querySelectorAll('.layout-card').forEach(c=>c.classList.toggle('active',c.dataset.layout===l));
+}
+
+// ═══════════════════════════════════════════════
+// SETTINGS: FONT / SIZE / TOGGLES
+// ═══════════════════════════════════════════════
+function applyFont(el){
+  document.querySelectorAll('.font-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  document.documentElement.style.setProperty('--body-font',el.dataset.font);
+  document.body.style.fontFamily=el.dataset.font+',sans-serif';
+}
+function applyFontSize(v){
+  q('#fontSizeVal').textContent=v;
+  document.documentElement.style.fontSize=v+'px';
+}
+function toggleAnim(cb){
+  S.anim=cb.checked;
+  const style=q('#animStyle')||createStyleEl('animStyle');
+  style.textContent=S.anim?'':'.msg-group{animation:none!important}';
+}
+function toggleCompact(cb){S.compact=cb.checked;renderChat();}
+function createStyleEl(id){const s=document.createElement('style');s.id=id;document.head.appendChild(s);return s;}
+
+// ═══════════════════════════════════════════════
+// DRAG & DROP MODULES (snap-to-zone)
+// ═══════════════════════════════════════════════
+function onModDragStart(e,id){
+  S.dragMod=id;
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',id);
+  setTimeout(()=>{const m=q('#'+id);if(m)m.classList.add('is-dragging');},0);
+  // Highlight all droppable zones
+  ['zoneLeft','zoneRight','zoneCenter'].forEach(zid=>{
+    const z=q('#'+zid);
+    if(z&&z.style.display!=='none')z.setAttribute('data-droppable','1');
+  });
+}
+function onModDragEnd(){
+  if(S.dragMod)q('#'+S.dragMod)?.classList.remove('is-dragging');
+  S.dragMod=null;
+  document.querySelectorAll('.zone').forEach(z=>{z.classList.remove('drop-target');z.removeAttribute('data-droppable');});
+}
+function onZoneDragOver(e,zone){
+  if(!S.dragMod)return;
+  e.preventDefault();e.dataTransfer.dropEffect='move';
+  const zoneIds={left:'zoneLeft',right:'zoneRight',center:'zoneCenter'};
+  const z=q('#'+zoneIds[zone]);
+  if(z)z.classList.add('drop-target');
+}
+function onZoneDragLeave(e,zone){
+  const zoneIds={left:'zoneLeft',right:'zoneRight',center:'zoneCenter'};
+  const z=q('#'+zoneIds[zone]);
+  // Only remove if truly leaving the zone element
+  if(z&&!z.contains(e.relatedTarget))z.classList.remove('drop-target');
+}
+function onZoneDrop(e,zone){
+  e.preventDefault();
+  const modId=S.dragMod||e.dataTransfer.getData('text/plain');
+  const zoneIds={left:'zoneLeft',right:'zoneRight',center:'zoneCenter'};
+  const targetZone=q('#'+zoneIds[zone]);
+  if(!modId||!targetZone)return;
+  const mod=q('#'+modId);
+  if(!mod)return;
+
+  // Don't drop on own zone
+  if(mod.parentElement===targetZone){
+    document.querySelectorAll('.zone').forEach(z=>z.classList.remove('drop-target'));
+    return;
   }
+
+  // Swap: if target zone already has a module, swap them
+  const existingMod=targetZone.querySelector('.module');
+  const sourceZone=mod.parentElement;
+  if(existingMod&&sourceZone){
+    sourceZone.appendChild(existingMod);
+  }
+  targetZone.appendChild(mod);
+
+  document.querySelectorAll('.zone').forEach(z=>z.classList.remove('drop-target'));
+  S.dragMod=null;
+
+  // Update layout name to 'custom'
+  document.querySelectorAll('.layout-card').forEach(c=>c.classList.remove('active'));
+}
+
+// ═══════════════════════════════════════════════
+// MISC
+// ═══════════════════════════════════════════════
+function toggleBtn(b){b.style.opacity=b.style.opacity==='0.4'?'1':'0.4';}
+function q(s){return document.querySelector(s);}
+function now(){return new Date().toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});}
+function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmtB(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB';}
+
+// Mobile tab switching (simple show/hide)
+function mobSwitch(tab){
+  document.querySelectorAll('.mob-tab').forEach(b=>b.classList.remove('active'));
+  q('#mobTab'+tab.charAt(0).toUpperCase()+tab.slice(1).charAt(0).toUpperCase()+tab.slice(2))?.classList.add('active');
+  const zl=q('#zoneLeft'),zc=q('#zoneCenter'),zr=q('#zoneRight');
+  if(!zl||!zc||!zr)return;
+  zl.style.display='none';zc.style.display='none';zr.style.display='none';
+  if(tab==='servers'){/* handled by showDM/selectServer via channels panel */zl.style.display='flex';}
+  else if(tab==='channels'){zl.style.display='flex';}
+  else if(tab==='chat'){zc.style.display='flex';}
+  else if(tab==='members'){zr.style.display='flex';}
+}
+
+// Close overlays/emoji on outside click
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#emojiPicker')&&!e.target.closest('.inp-btn'))q('#emojiPicker')?.classList.remove('open');
+  if(e.target.classList.contains('overlay'))e.target.classList.remove('open');
 });
 
-// Start
-init();
+// ═══════════════════════════════════════════════
+// TITLEBAR & WINDOW CONTROLS (Electron)
+// ═══════════════════════════════════════════════
+function updateTitlebar(location){
+  const loc=q('#titlebarLocation');
+  if(loc)loc.textContent=location;
+}
+
+// Window controls
+q('#minBtn')?.addEventListener('click',()=>window.electron?.ipc.send('window:minimize'));
+q('#maxBtn')?.addEventListener('click',()=>window.electron?.ipc.send('window:maximize'));
+q('#closeBtn')?.addEventListener('click',()=>window.electron?.ipc.send('window:close'));
+
+// Initialize titlebar location
+updateTitlebar('Accueil');
 </script>
 </body>
 </html>

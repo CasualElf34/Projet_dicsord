@@ -1,0 +1,79 @@
+{
+  "name": "likoo",
+  "version": "1.0.0",
+  "description": "Likoo - Discord-like application",
+  "main": "main.js",
+  "author": "Your Name",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run server\" \"npm run electron\"",
+    "server": "python server.py",
+    "electron": "wait-on http://localhost:5000 && electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder -l"
+  },
+  "build": {
+    "appId": "com.likoo.app",
+    "productName": "Likoo",
+    "directories": {
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "*.html",
+      "*.css",
+      "*.js",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Likoo"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "electron": "^25.0.0",
+    "electron-builder": "^24.6.0",
+    "wait-on": "^7.0.1"
+  },
+  "dependencies": {
+    "electron-is-dev": "^3.0.1"
+  }
+}
