@@ -7,8 +7,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="resize.js"></script>
 </head>
 <body data-theme="amber">
+
+<script>
+  // Détecter si on est dans Electron ou sur le web
+  if (window.electron || window.electronAPI) {
+    document.documentElement.classList.add('is-electron');
+    document.body.classList.add('is-electron');
+  } else {
+    // Sur le web, on ne montre pas la titlebar
+    document.documentElement.classList.remove('is-electron');
+  }
+</script>
 
 <!-- CUSTOM TITLEBAR (Electron) -->
 <div id="titlebar" class="titlebar">
@@ -53,6 +65,7 @@
         <span class="drag-handle">⋮⋮</span>
         <span class="module-icon" id="chModIcon">#</span>
         <span class="module-title" id="chModTitle">Salons</span>
+        <button class="header-btn" id="serverSettingsBtn" style="display:none;margin-left:auto" onclick="openServerSettings()" title="Paramètres">⚙️</button>
       </div>
       <div class="search-bar"><span>🔍</span><input type="text" placeholder="Rechercher…"></div>
       <div class="channels-scroll" id="channelsList"></div>
@@ -174,6 +187,114 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modalCreateServer')">Annuler</button>
       <button class="btn btn-primary" onclick="createServer()">Créer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Server Settings Modal - Discord Style -->
+<div class="overlay" id="modalServerSettings">
+  <div class="modal" style="max-width:1100px;width:96%;height:75vh;overflow:hidden;display:flex;flex-direction:column;padding:0;background:var(--bg)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:24px 28px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <h2 style="margin:0;font-size:26px;font-weight:900">Paramètres du serveur</h2>
+      <button class="btn btn-ghost" style="width:40px;height:40px;padding:0;font-size:22px" onclick="closeModal('modalServerSettings')">✕</button>
+    </div>
+    
+    <div style="display:flex;flex:1;overflow:hidden">
+      <!-- Menu latéral FIXE -->
+      <div style="width:280px;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0">
+        <div style="padding:18px 16px 12px;font-size:11px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1.2px">Utilisateur</div>
+        <div onclick="switchServerTab('profile')" style="padding:14px 18px;cursor:pointer;color:var(--text2);font-size:15px;transition:all .15s;border-left:3px solid transparent" id="tabBtnProfile" class="srv-settings-tab-btn active">
+          👤 Profil du serveur
+        </div>
+        <div onclick="switchServerTab('members')" style="padding:14px 18px;cursor:pointer;color:var(--text3);font-size:15px;transition:all .15s;border-left:3px solid transparent" id="tabBtnMembers" class="srv-settings-tab-btn">
+          👥 Membres
+        </div>
+        
+        <div style="padding:18px 16px 12px;font-size:11px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1.2px">Gestion</div>
+        <div onclick="switchServerTab('roles')" style="padding:14px 18px;cursor:pointer;color:var(--text3);font-size:15px;transition:all .15s;border-left:3px solid transparent" id="tabBtnRoles" class="srv-settings-tab-btn">
+          🎭 Rôles
+        </div>
+        <div onclick="switchServerTab('channels')" style="padding:14px 18px;cursor:pointer;color:var(--text3);font-size:15px;transition:all .15s;border-left:3px solid transparent" id="tabBtnChannels" class="srv-settings-tab-btn">
+          💬 Salons
+        </div>
+        
+        <div style="padding:18px 16px 12px;font-size:11px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1.2px">Danger</div>
+        <div onclick="switchServerTab('delete')" style="padding:14px 18px;cursor:pointer;color:#f87171;font-size:15px;transition:all .15s;border-left:3px solid transparent" id="tabBtnDelete" class="srv-settings-tab-btn">
+          🗑️ Supprimer
+        </div>
+      </div>
+      
+      <!-- Contenu SCROLLABLE avec hauteur fixa -->
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:28px 36px;display:flex;flex-direction:column;min-height:0">
+        <!-- TAB: PROFILE -->
+        <div id="tabProfile" class="settings-tab-content" style="display:block">
+          <h3 style="font-size:22px;font-weight:900;margin:0 0 32px 0">Profil du serveur</h3>
+          
+          <div style="margin-bottom:36px">
+            <label style="font-size:12px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1px">Icône du Serveur</label>
+            <div style="display:flex;align-items:center;gap:24px;margin-top:16px">
+              <div id="serverIconPreview" style="width:110px;height:110px;border-radius:20px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:52px;cursor:pointer;border:2px dashed var(--border2);flex-shrink:0" onclick="document.getElementById('serverIconInput').click()"></div>
+              <div>
+                <p style="font-size:15px;color:var(--text2);margin:0 0 8px 0;font-weight:700">Changer l'icône</p>
+                <p style="font-size:13px;color:var(--text4);margin:0;line-height:1.6">Cliquez pour en sélectionner une. JPG, PNG (max 5 MB)</p>
+                <input type="file" id="serverIconInput" accept="image/*" style="display:none" onchange="handleServerIconUpload(this)">
+              </div>
+            </div>
+          </div>
+          
+          <div style="margin-bottom:24px">
+            <label style="font-size:12px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1px">Nom du Serveur</label>
+            <input type="text" id="serverSettingsName" maxlength="100" style="width:100%;margin-top:10px;padding:14px 16px;background:var(--bg);border:1.5px solid var(--border2);border-radius:10px;font-size:15px;color:var(--text);box-sizing:border-box;font-family:inherit;font-weight:500">
+          </div>
+          
+          <div style="margin-bottom:36px">
+            <label style="font-size:12px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1px">Description</label>
+            <textarea id="serverSettingsDesc" maxlength="500" style="width:100%;margin-top:10px;padding:14px 16px;background:var(--bg);border:1.5px solid var(--border2);border-radius:10px;font-size:15px;color:var(--text);resize:none;height:160px;box-sizing:border-box;font-family:inherit;font-weight:500"></textarea>
+          </div>
+          
+          <div id="serverSettingsError" style="color:#f87171;font-size:14px;margin-bottom:16px;display:none;padding:12px 14px;background:rgba(248,113,113,.1);border-radius:8px;border-left:3px solid #f87171"></div>
+          <div id="serverSettingsSuccess" style="color:#4ade80;font-size:14px;margin-bottom:16px;display:none;padding:12px 14px;background:rgba(74,222,128,.1);border-radius:8px;border-left:3px solid #4ade80"></div>
+          
+          <div style="display:flex;gap:14px;justify-content:flex-end;margin-top:auto;padding-top:24px;border-top:1px solid var(--border)">
+            <button class="btn btn-ghost" onclick="closeModal('modalServerSettings')">Annuler</button>
+            <button class="btn btn-primary" onclick="saveServerSettings()">Enregistrer les modifications</button>
+          </div>
+        </div>
+        
+        <!-- TAB: ROLES -->
+        <div id="tabRoles" class="settings-tab-content" style="display:none">
+          <h3 style="font-size:22px;font-weight:900;margin:0 0 14px 0">Gestion des rôles</h3>
+          <p style="color:var(--text3);font-size:15px;margin:0 0 28px 0;line-height:1.6">Utilisez des rôles pour regrouper les membres et leur assigner des permissions.</p>
+          
+          <button class="btn btn-primary" onclick="addNewRole()" style="margin-bottom:28px;font-size:15px">+ Créer un rôle</button>
+          
+          <div id="rolesList" style="display:flex;flex-direction:column;gap:16px;margin-bottom:auto"></div>
+          <div id="rolesError" style="color:#f87171;font-size:14px;display:none;padding:12px 14px;background:rgba(248,113,113,.1);border-radius:8px;border-left:3px solid #f87171"></div>
+        </div>
+        
+        <!-- TAB: MEMBERS -->
+        <div id="tabMembers" class="settings-tab-content" style="display:none">
+          <h3 style="font-size:22px;font-weight:900;margin:0 0 28px 0">Membres du serveur</h3>
+          <div id="membersList" style="display:flex;flex-direction:column;gap:12px"></div>
+        </div>
+        
+        <!-- TAB: CHANNELS -->
+        <div id="tabChannels" class="settings-tab-content" style="display:none">
+          <h3 style="font-size:22px;font-weight:900;margin:0 0 24px 0">Salons</h3>
+          <button class="btn btn-primary" onclick="openModal('modalCreateChannel')" style="margin-bottom:28px;font-size:15px">+ Nouveau salon</button>
+          <div id="channelsList" style="display:flex;flex-direction:column;gap:0;padding:8px 0"></div>
+        </div>
+        
+        <!-- TAB: DELETE -->
+        <div id="tabDelete" class="settings-tab-content" style="display:none">
+          <h3 style="font-size:22px;font-weight:900;margin:0 0 28px 0;color:var(--red)">Zone de danger</h3>
+          <div style="padding:24px;background:rgba(192,57,43,.08);border:1.5px solid rgba(192,57,43,.25);border-radius:14px;max-width:600px">
+            <h4 style="margin:0 0 12px 0;color:var(--red);font-size:17px;font-weight:800">Supprimer le serveur</h4>
+            <p style="margin:0 0 20px 0;color:var(--text3);font-size:14px;line-height:1.7">Une fois le serveur supprimé, il n'y a aucun moyen de le récupérer. Cette action est irréversible.</p>
+            <button class="btn btn-danger" onclick="deleteServerConfirm()" style="background:#f87171;color:#7f1d1d;font-size:15px">Supprimer le serveur</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -613,16 +734,29 @@ function showToast(msg) {
 
 async function loadServers() {
   const token = localStorage.getItem('likoo_token');
+  if (!token) {
+    console.log('No token, using demo data');
+    buildDemo();
+    renderNav();
+    if (S.servers.length > 0) selectServer(S.servers[0].id);
+    renderMembers();
+    return;
+  }
   try {
     const r = await fetch('http://localhost:5000/api/servers', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    if (!r.ok) throw new Error('fetch failed');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const servers = await r.json();
+    if (!Array.isArray(servers)) throw new Error('Invalid response format');
+    
     S.servers = servers.map(srv => ({
       id: srv.id,
       name: srv.name,
       emoji: srv.icon || '🌐',
+      icon_image: srv.icon_image || null,
+      owner_id: srv.owner_id,
+      description: srv.description || '',
       channels: (srv.channels || []).map(ch => ({
         id: ch.id,
         name: ch.name,
@@ -630,7 +764,8 @@ async function loadServers() {
         desc: ch.description || '',
         notif: 0
       })),
-      members: []
+      members: [],
+      roles: srv.roles || []
     }));
     renderNav();
     if (S.servers.length > 0) {
@@ -641,6 +776,7 @@ async function loadServers() {
     renderMembers();
   } catch(e) {
     console.error('loadServers error:', e);
+    console.log('Using demo data due to error');
     buildDemo();
     renderNav();
     if (S.servers.length > 0) selectServer(S.servers[0].id);
@@ -889,10 +1025,12 @@ function renderNav(){
   const el=q('#navServers'); if(!el)return;
   const badge = S.pendingRequests>0 ? `<span style="background:#f87171;color:#fff;border-radius:999px;font-size:10px;padding:1px 5px;margin-left:4px">${S.pendingRequests}</span>` : '';
   let h=`<div class="nav-server ${S.view==='dm'?'active':''}" onclick="showDM()">💬 Messages privés${badge}</div>`;
-  h+=S.servers.map(s=>`
-    <div class="nav-server ${S.activeSrv?.id===s.id&&S.view==='server'?'active':''}" onclick="selectServer('${s.id}')">
-      ${s.emoji} ${s.name}${s.channels.some(c=>c.notif)?` <span class="srv-notif">●</span>`:''}
-    </div>`).join('');
+  h+=S.servers.map(s=>{
+    const icon = s.icon_image ? `<img src="${s.icon_image}" style="width:18px;height:18px;border-radius:3px;object-fit:cover" alt="icon">` : (s.emoji || '🏠');
+    return `<div class="nav-server ${S.activeSrv?.id===s.id&&S.view==='server'?'active':''}" onclick="selectServer('${s.id}')">
+      ${icon} ${s.name}${s.channels.some(c=>c.notif)?` <span class="srv-notif">●</span>`:''}
+    </div>`;
+  }).join('');
   el.innerHTML=h;
 }
 
@@ -915,7 +1053,7 @@ function showDM(){
 }
 function selectServer(id){
   S.view='server'; S.activeSrv=S.servers.find(s=>s.id===id); S.dmChannel=null;
-  renderNav(); renderChannels(); renderMembers();
+  renderNav(); renderChannels(); renderMembers(); updateSettingsButtonVisibility();
   const first=S.activeSrv.channels.find(c=>c.type!=='voice');
   if(first) selectChannel(first.id); else renderChat();
 }
@@ -935,22 +1073,29 @@ function selectChannel(id){
   if (socket) socket.emit('join_channel', { channel_id: id });
   // Charger l'historique depuis le backend
   const token = localStorage.getItem('likoo_token');
-  fetch(`http://localhost:5000/api/channels/${id}/messages`, {
-    headers: { 'Authorization': 'Bearer ' + token }
-  }).then(r => r.json()).then(msgs => {
-    // Récupérer les messages locaux (optimistes) déjà affichés
-    const localOnly = (S.messages[id] || []).filter(m => !m.id || typeof m.id === 'number');
-    const history = msgs.map(m => ({
-      id: m.id,
-      content: m.content,
-      time: new Date(m.created_at).toLocaleTimeString('fr', {hour:'2-digit', minute:'2-digit'}),
-      reactions: [],
-      author: { name: m.author.username, av: m.author.avatar, color: m.author.color || '#94a3b8' }
-    }));
-    // Fusionner : historique + messages locaux non encore confirmés
-    S.messages[id] = [...history, ...localOnly];
-    if (S.activeCh === id) renderChat();
-  }).catch(e => console.error('load messages error:', e));
+  if (token && id.includes('-')) { // Vrai ID UUID, pas un ID local de démo
+    fetch(`http://localhost:5000/api/channels/${id}/messages`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(r => r.json()).then(msgs => {
+      // Vérifier que msgs est bien un tableau
+      if (!Array.isArray(msgs)) {
+        console.warn('Invalid response format for messages:', msgs);
+        return;
+      }
+      // Récupérer les messages locaux (optimistes) déjà affichés
+      const localOnly = (S.messages[id] || []).filter(m => !m.id || typeof m.id === 'number');
+      const history = msgs.map(m => ({
+        id: m.id,
+        content: m.content,
+        time: new Date(m.created_at).toLocaleTimeString('fr', {hour:'2-digit', minute:'2-digit'}),
+        reactions: [],
+        author: { name: m.author.username, av: m.author.avatar, color: m.author.color || '#94a3b8' }
+      }));
+      // Fusionner : historique + messages locaux non encore confirmés
+      S.messages[id] = [...history, ...localOnly];
+      if (S.activeCh === id) renderChat();
+    }).catch(e => console.error('load messages error:', e));
+  }
 }
 async function selectDM(id){
   S.dmChannel=id; S.view='dm';
@@ -964,20 +1109,27 @@ async function selectDM(id){
   renderChannels(); renderChat();
   // Charger l'historique depuis le backend
   const token=localStorage.getItem('likoo_token');
-  try{
-    const res=await fetch(`http://localhost:5000/api/dm/${id}`,{headers:{'Authorization':'Bearer '+token}});
-    const history=await res.json();
-    const mapped=history.map(m=>({
-      id:m.id,
-      content:m.content,
-      time:new Date(m.created_at).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'}),
-      reactions:[],
-      author:{name:m.author.username,av:m.author.avatar,color:m.author.color||'#94a3b8'}
-    }));
-    const localOnly=(S.messages[id]||[]).filter(m=>typeof m.id==='number');
-    S.messages[id]=[...mapped,...localOnly];
-    if(S.dmChannel===id)renderChat();
-  }catch(e){console.error('load dm error:',e);}
+  if(token && id.includes('-')) { // Vrai ID UUID
+    try{
+      const res=await fetch(`http://localhost:5000/api/dm/${id}`,{headers:{'Authorization':'Bearer '+token}});
+      const history=await res.json();
+      // Vérifier que history est un tableau
+      if(!Array.isArray(history)){
+        console.warn('Invalid DM response format:', history);
+        return;
+      }
+      const mapped=history.map(m=>({
+        id:m.id,
+        content:m.content,
+        time:new Date(m.created_at).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'}),
+        reactions:[],
+        author:{name:m.author.username,av:m.author.avatar,color:m.author.color||'#94a3b8'}
+      }));
+      const localOnly=(S.messages[id]||[]).filter(m=>typeof m.id==='number');
+      S.messages[id]=[...mapped,...localOnly];
+      if(S.dmChannel===id)renderChat();
+    }catch(e){console.error('load dm error:',e);}
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -1227,24 +1379,505 @@ async function createServer(){
   const name=q('#srvName')?.value.trim();if(!name)return;
   const emoji=q('#srvEmoji')?.value.trim()||'🌐';
   const token=localStorage.getItem('likoo_token');
+  if(!token){
+    alert('Vous devez être connecté pour créer un serveur');
+    return;
+  }
   try{
     const r=await fetch('http://localhost:5000/api/servers',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
       body:JSON.stringify({name,icon:emoji})
     });
-    if(!r.ok)throw new Error('failed');
     const srv=await r.json();
+    if(!r.ok){
+      throw new Error(srv.error || `HTTP ${r.status}`);
+    }
     const newSrv={
-      id:srv.id,name:srv.name,emoji:srv.icon||emoji,
+      id:srv.id,name:srv.name,emoji:srv.icon||emoji,owner_id:srv.owner_id,
       channels:(srv.channels||[]).map(ch=>({id:ch.id,name:ch.name,type:ch.type||'text',desc:ch.description||'',notif:0})),
       members:[]
     };
     S.servers.push(newSrv);
     q('#srvName').value='';q('#srvEmoji').value='';
     closeModal('modalCreateServer');renderNav();selectServer(newSrv.id);
-  }catch(e){console.error('createServer:',e);alert('Erreur lors de la création du serveur.');}
+  }catch(e){
+    console.error('createServer error:',e);
+    alert('Erreur: '+e.message);
+  }
 }
+
+// Server Settings
+function openServerSettings(){
+  if(!S.activeSrv)return;
+  const isOwner = S.activeSrv.owner_id === S.me.id;
+  if(!isOwner){
+    alert('Seul le propriétaire du serveur peut modifier les paramètres');
+    return;
+  }
+  
+  // Charger les données FRAÎCHES du serveur depuis l'API
+  console.log('📥 Chargement des données fraîches du serveur...');
+  fetch(`/api/servers/${S.activeSrv.id}`, {
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('likoo_token')}` }
+  })
+  .then(r => r.json())
+  .then(data => {
+    console.log('✅ Données du serveur mises à jour:', data);
+    // Mettre à jour S.activeSrv avec les données fraîches
+    S.activeSrv = data;
+    
+    // Remplir le formulaire
+    q('#serverSettingsName').value = S.activeSrv.name || '';
+    q('#serverSettingsDesc').value = S.activeSrv.description || '';
+    updateServerIconPreview();
+    clearServerSettingsMessages();
+    switchServerTab('profile');
+    openModal('modalServerSettings');
+  })
+  .catch(err => {
+    console.error('❌ Erreur lors du chargement du serveur:', err);
+    alert('Erreur lors du chargement des paramètres');
+  });
+}
+
+function updateSettingsButtonVisibility(){
+  const btn = q('#serverSettingsBtn');
+  if(!btn)return;
+  const isOwner = S.activeSrv && S.activeSrv.owner_id === S.me.id;
+  btn.style.display = isOwner ? 'block' : 'none';
+}
+
+function clearServerSettingsMessages() {
+  const errEl = q('#serverSettingsError');
+  const sucEl = q('#serverSettingsSuccess');
+  const roleErrEl = q('#rolesError');
+  if (errEl) errEl.style.display = 'none';
+  if (sucEl) sucEl.style.display = 'none';
+  if (roleErrEl) roleErrEl.style.display = 'none';
+}
+
+function switchServerTab(tabName) {
+  // Masquer tous les onglets
+  qa('.settings-tab-content').forEach(el => el.style.display = 'none');
+  
+  // Désactiver tous les boutons
+  qa('.srv-settings-tab-btn').forEach(btn => btn.classList.remove('active'));
+  
+  // Afficher l'onglet sélectionné
+  const tabEl = q('#tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+  if (tabEl) tabEl.style.display = 'block';
+  
+  // Activer le bouton
+  const btnId = 'tabBtn' + tabName.charAt(0).toUpperCase() + tabName.slice(1);
+  const btn = q('#' + btnId);
+  if (btn) btn.classList.add('active');
+  
+  // Charger les données selon l'onglet
+  if (tabName === 'roles') {
+    loadServerRoles();
+  } else if (tabName === 'members') {
+    loadServerMembers();
+  } else if (tabName === 'channels') {
+    loadServerChannels();
+  }
+}
+
+function loadServerMembers() {
+  const list = q('#membersList');
+  if (!list || !S.activeSrv) {
+    console.warn('loadServerMembers: list ou activeSrv manquant');
+    return;
+  }
+  
+  console.log('📥 Chargement membres du serveur:', S.activeSrv.id);
+  
+  // Les membres sont déjà dans S.activeSrv.members
+  const members = S.activeSrv.members || [];
+  console.log('✅ Membres trouvés:', members.length, members);
+  
+  if (!Array.isArray(members) || members.length === 0) {
+    list.innerHTML = '<p style="color:var(--text4);text-align:center;padding:30px;font-size:14px">Aucun membre (seul propriétaire pour l\'instant)</p>';
+    return;
+  }
+  
+  let html = '';
+  members.forEach(m => {
+    html += `
+      <div style="padding:12px 14px;background:var(--bg);border-radius:8px;display:flex;align-items:center;gap:12px;margin-bottom:8px;overflow:hidden;box-sizing:border-box">
+        <div style="width:40px;height:40px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${m.avatar || '👤'}</div>
+        <div style="flex:1;min-width:0;overflow:hidden">
+          <div style="font-weight:600;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.username || 'Unknown'}</div>
+          <div style="font-size:12px;color:var(--text4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Rejoint le ${new Date(m.joined_at).toLocaleDateString('fr')}</div>
+        </div>
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+}
+
+function loadServerChannels() {
+  const list = q('#channelsList');
+  if (!list || !S.activeSrv) {
+    console.warn('loadServerChannels: list ou activeSrv manquant');
+    return;
+  }
+  
+  console.log('📥 Chargement salons du serveur:', S.activeSrv.id);
+  
+  // Les salons sont déjà dans S.activeSrv.channels
+  const channels = S.activeSrv.channels || [];
+  console.log('✅ Salons trouvés:', channels.length, channels);
+  
+  if (!Array.isArray(channels) || channels.length === 0) {
+    list.innerHTML = '<p style="color:var(--text4);text-align:center;padding:30px;font-size:14px">Aucun salon</p>';
+    return;
+  }
+  
+  // Séparer les salons par type
+  const textChannels = channels.filter(ch => ch.type !== 'voice');
+  const voiceChannels = channels.filter(ch => ch.type === 'voice');
+  
+  let html = '';
+  
+  // Section SALONS (text)
+  if (textChannels.length > 0) {
+    html += '<div style="margin-bottom:28px">';
+    html += '<div style="font-size:11px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1.2px;padding:12px 0 12px 0;border-bottom:1px solid var(--border)">SALONS</div>';
+    textChannels.forEach(ch => {
+      html += `<div style="padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:6px;cursor:pointer;border-radius:6px;transition:background 0.2s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'"><div style="font-size:16px;flex-shrink:0">${ch.type === 'announce' ? '📢' : '#'}</div><div style="flex:1;min-width:0;overflow:hidden"><div style="font-weight:500;color:var(--text);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ch.name}</div></div></div>`;
+    });
+    html += '</div>';
+  }
+  
+  // Section VOCAUX (voice)
+  if (voiceChannels.length > 0) {
+    html += '<div>';
+    html += '<div style="font-size:11px;font-weight:800;color:var(--text4);text-transform:uppercase;letter-spacing:1.2px;padding:12px 0 12px 0;border-bottom:1px solid var(--border)">VOCAUX</div>';
+    voiceChannels.forEach(ch => {
+      html += `<div style="padding:10px 12px;display:flex;align-items:center;gap:10px;margin-bottom:6px;cursor:pointer;border-radius:6px;transition:background 0.2s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'"><div style="font-size:16px;flex-shrink:0">🔊</div><div style="flex:1;min-width:0;overflow:hidden"><div style="font-weight:500;color:var(--text);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ch.name}</div></div></div>`;
+    });
+    html += '</div>';
+  }
+  
+  list.innerHTML = html;
+}
+
+function updateServerIconPreview() {
+  const preview = q('#serverIconPreview');
+  if (!preview) return;
+  
+  if (S.activeSrv.icon_image) {
+    preview.style.fontSize = '0';
+    preview.innerHTML = `<img src="${S.activeSrv.icon_image}" style="width:100%;height:100%;border-radius:16px;object-fit:cover" alt="icon">`;
+  } else {
+    preview.style.fontSize = '32px';
+    preview.innerHTML = S.activeSrv.emoji || '🏠';
+  }
+}
+
+function handleServerIconUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  if (!file.type.startsWith('image/')) {
+    showServerError('Veuillez sélectionner une image');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showServerError('L\'image ne doit pas dépasser 5 MB');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = q('#serverIconPreview');
+    preview.style.fontSize = '0';
+    preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;border-radius:16px;object-fit:cover" alt="preview">`;
+    input.dataset.processed = 'true';
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveServerSettings() {
+  const name = q('#serverSettingsName').value.trim();
+  const desc = q('#serverSettingsDesc').value.trim();
+  const iconInput = q('#serverIconInput');
+  
+  if (!name) {
+    showServerError('Le nom du serveur est obligatoire');
+    return;
+  }
+  
+  if (!S.activeSrv) {
+    showServerError('Aucun serveur sélectionné');
+    return;
+  }
+  
+  const token = localStorage.getItem('likoo_token');
+  if (!token) {
+    showServerError('Non authentifié');
+    return;
+  }
+  
+  // Fonction pour sauvegarder les paramètres
+  const doSave = () => {
+    fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({ name, description: desc })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        showServerError(data.error);
+        return;
+      }
+      S.activeSrv.name = name;
+      S.activeSrv.description = desc;
+      showServerSuccess('Paramètres enregistrés avec succès');
+      renderNav();
+      renderChannels();
+      setTimeout(() => closeModal('modalServerSettings'), 1500);
+    })
+    .catch(err => {
+      console.error('Error:', err);
+      showServerError('Erreur lors de la sauvegarde');
+    });
+  };
+  
+  // Vérifier si un fichier a été sélectionné
+  if (iconInput && iconInput.files.length > 0) {
+    const formData = new FormData();
+    formData.append('icon', iconInput.files[0]);
+    
+    fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}/upload-icon`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token
+      },
+      body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        showServerError(data.error);
+        return;
+      }
+      if (data.icon_image) {
+        S.activeSrv.icon_image = data.icon_image;
+      }
+      // Sauvegarder les autres paramètres après upload de l'icône
+      doSave();
+    })
+    .catch(err => {
+      console.error('Icon upload error:', err);
+      showServerError('Erreur lors de l\'upload de l\'icône');
+    });
+  } else {
+    // Pas de fichier, juste sauvegarder les paramètres
+    doSave();
+  }
+}
+
+function showServerError(msg) {
+  const el = q('#serverSettingsError');
+  if (el) {
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+  const sucEl = q('#serverSettingsSuccess');
+  if (sucEl) sucEl.style.display = 'none';
+}
+
+function showServerSuccess(msg) {
+  const el = q('#serverSettingsSuccess');
+  if (el) {
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+  const errEl = q('#serverSettingsError');
+  if (errEl) errEl.style.display = 'none';
+}
+
+function loadServerRoles() {
+  const token = localStorage.getItem('likoo_token');
+  if (!token || !S.activeSrv) return;
+  
+  fetch(`/api/servers/${S.activeSrv.id}/roles`, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+  .then(r => r.json())
+  .then(roles => {
+    const rolesList = q('#rolesList');
+    if (!rolesList) return;
+    
+    if (!Array.isArray(roles) || roles.length === 0) {
+      rolesList.innerHTML = '<p style="color:var(--text4);text-align:center;padding:20px">Aucun rôle créé</p>';
+      return;
+    }
+    
+    let html = '';
+    roles.forEach(role => {
+      const perms = Object.entries(role.permissions || {}).filter(([k,v]) => v).map(([k]) => k).join(', ');
+      html += `
+        <div style="border:1.5px solid var(--border2);border-radius:8px;padding:14px;display:flex;justify-content:space-between;align-items:center;background:var(--bg)">
+          <div style="display:flex;align-items:center;gap:12px;flex:1">
+            <div style="width:24px;height:24px;background-color:${role.color || '#8b5cf6'};border-radius:6px;flex-shrink:0"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;color:var(--text);font-size:14px">${role.name}</div>
+              <div style="font-size:11px;color:var(--text4);margin-top:4px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden">${perms || 'Pas de permissions'}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;border-radius:6px">✎</button>
+            <button class="btn" style="padding:6px 12px;font-size:12px;background:#f87171;color:#7f1d1d;border:none;border-radius:6px;cursor:pointer;font-weight:600" onclick="deleteRole('${role.id}')">🗑️</button>
+          </div>
+        </div>
+      `;
+    });
+    
+    rolesList.innerHTML = html;
+  })
+  .catch(err => {
+    console.error('Erreur chargement rôles:', err);
+    const el = q('#rolesError');
+    if (el) {
+      el.textContent = 'Erreur lors du chargement des rôles';
+      el.style.display = 'block';
+    }
+  });
+}
+
+function addNewRole() {
+  const rolesList = q('#rolesList');
+  if (!rolesList || rolesList.querySelector('[data-form="create-role"]')) return;
+  
+  const permissions = {
+    manage_server: true,
+    manage_roles: false,
+    manage_channels: false,
+    manage_members: false,
+    send_messages: true,
+    send_files: false,
+    mention_everyone: false,
+    manage_messages: false,
+    mute_members: false
+  };
+  
+  let permissionsHTML = '';
+  Object.entries(permissions).forEach(([key, defaultVal]) => {
+    const label = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    permissionsHTML += `
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:8px">
+        <input type="checkbox" class="perm-checkbox" data-perm="${key}" ${defaultVal ? 'checked' : ''}>
+        ${label}
+      </label>
+    `;
+  });
+  
+  const formHTML = `
+    <div data-form="create-role" style="border:2px solid #8b5cf6;border-radius:8px;padding:12px;background:#f9f3ff">
+      <h4 style="margin:0 0 12px 0;font-size:14px">Nouveau Rôle</h4>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:#666">Nom</label>
+        <input type="text" id="newRoleName" placeholder="Ex: Modérateur" maxlength="50" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:4px;font-size:12px;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:#666">Couleur</label>
+        <input type="color" id="newRoleColor" value="#8b5cf6" style="width:100%;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer;margin-top:4px">
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:#666;display:block;margin-bottom:8px">Permissions</label>
+        <div style="background:white;padding:8px;border-radius:4px;border:1px solid #ddd">
+          ${permissionsHTML}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="cancelNewRole()" style="padding:6px 12px;font-size:12px">Annuler</button>
+        <button class="btn btn-primary" onclick="createRole()" style="padding:6px 12px;font-size:12px">Créer</button>
+      </div>
+    </div>
+  `;
+  
+  rolesList.insertAdjacentHTML('afterbegin', formHTML);
+  q('#newRoleName').focus();
+}
+
+function cancelNewRole() {
+  const form = q('[data-form="create-role"]');
+  if (form) form.remove();
+}
+
+async function createRole() {
+  const name = q('#newRoleName').value.trim();
+  const color = q('#newRoleColor').value;
+  
+  if (!name) {
+    alert('Le nom du rôle est obligatoire');
+    return;
+  }
+  
+  const permissions = {};
+  qa('.perm-checkbox').forEach(cb => {
+    permissions[cb.dataset.perm] = cb.checked;
+  });
+  
+  const token = localStorage.getItem('likoo_token');
+  if (!token || !S.activeSrv) return;
+  
+  try {
+    const r = await fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}/roles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({ name, color, permissions })
+    });
+    
+    const data = await r.json();
+    if (data.error) {
+      alert('Erreur: ' + data.error);
+      return;
+    }
+    
+    cancelNewRole();
+    loadServerRoles();
+  } catch (err) {
+    console.error('Error:', err);
+    alert('Erreur lors de la création du rôle');
+  }
+}
+
+async function deleteRole(roleId) {
+  if (!confirm('Êtes-vous sûr?')) return;
+  
+  const token = localStorage.getItem('likoo_token');
+  if (!token || !S.activeSrv) return;
+  
+  try {
+    const r = await fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}/roles/${roleId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    
+    const data = await r.json();
+    if (data.error) {
+      alert('Erreur: ' + data.error);
+      return;
+    }
+    
+    loadServerRoles();
+  } catch (err) {
+    console.error('Error:', err);
+    alert('Erreur lors de la suppression');
+  }
+}
+
 let newChType='text';
 function selChType(el){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));el.classList.add('sel');newChType=el.dataset.type;}
 async function createChannel(){
@@ -1518,10 +2151,54 @@ function onZoneDrop(e,zone){
 }
 
 // ═══════════════════════════════════════════════
+// SERVER SETTINGS HELPERS
+// ═══════════════════════════════════════════════
+function deleteServerConfirm() {
+  if (!S.activeSrv) {
+    showServerError('Aucun serveur sélectionné');
+    return;
+  }
+  
+  if (S.activeSrv.owner_id !== S.me.id) {
+    showServerError('Seul le propriétaire peut supprimer le serveur');
+    return;
+  }
+  
+  if (confirm(`Êtes-vous sûr de vouloir supprimer "${S.activeSrv.name}" ? Cette action est irréversible !`)) {
+    const token = localStorage.getItem('likoo_token');
+    if (!token) {
+      showServerError('Non authentifié');
+      return;
+    }
+    
+    fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        showServerError(data.error);
+        return;
+      }
+      S.servers = S.servers.filter(s => s.id !== S.activeSrv.id);
+      closeModal('modalServerSettings');
+      showHome();
+      renderNav();
+    })
+    .catch(err => {
+      console.error('Delete error:', err);
+      showServerError('Erreur lors de la suppression');
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════
 // MISC
 // ═══════════════════════════════════════════════
 function toggleBtn(b){b.style.opacity=b.style.opacity==='0.4'?'1':'0.4';}
 function q(s){return document.querySelector(s);}
+function qa(s){return document.querySelectorAll(s);}
 function now(){return new Date().toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});}
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}

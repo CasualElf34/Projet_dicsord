@@ -14,8 +14,15 @@ from pathlib import Path
 import secrets
 import string
 import uuid
+import json
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from dotenv import load_dotenv
 
-from models import db, User, Server, Channel, Message, FriendRequest, DirectMessage
+# Load environment variables from .env file
+load_dotenv()
+
+from models import db, User, Server, Channel, Message, FriendRequest, DirectMessage, ServerMember, Role
 
 # ═══════════════════════════════════════════════════
 # CONFIGURATION
@@ -27,7 +34,8 @@ app = Flask(
     __name__,
     template_folder=str(BASE_DIR),
     static_folder=str(BASE_DIR),
-    static_url_path=''
+    static_url_path='',
+    instance_path=str(BASE_DIR / 'instance')
 )
 
 # Config Database
@@ -155,6 +163,105 @@ def login():
         'access_token': access_token
     }), 200
 
+# ─────────────────────────────────────────────
+# GOOGLE OAUTH LOGIN
+# ─────────────────────────────────────────────
+
+@app.route('/api/auth/google', methods=['POST'])
+def google_login():
+    """Authentifie un utilisateur via Google OAuth"""
+    try:
+        data = request.json
+        token = data.get('token')
+        
+        if not token:
+            return jsonify({'error': 'Token Google manquant'}), 400
+        
+        GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+        idinfo = None
+        
+        # ──── Méthode 1: Vérifier avec verify_oauth2_token ────
+        try:
+            idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
+        except Exception as e:
+            pass
+        
+        # ──── Méthode 2: Appel HTTP à Google tokeninfo ────
+        if not idinfo:
+            try:
+                import requests as req
+                resp = req.get(f'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token={token}', timeout=5)
+                if resp.status_code == 200:
+                    idinfo = resp.json()
+            except:
+                pass
+        
+        # ──── Méthode 3: Parser directement le JWT (mode dev) ────
+        if not idinfo:
+            try:
+                import base64
+                parts = token.split('.')
+                if len(parts) == 3:
+                    payload = parts[1]
+                    payload += '=' * (4 - len(payload) % 4)
+                    idinfo = json.loads(base64.urlsafe_b64decode(payload))
+                else:
+                    return jsonify({'error': 'Format de token invalide'}), 401
+            except Exception as e:
+                return jsonify({'error': f'Impossible de valider le token: {str(e)}'}), 401
+        
+        if not idinfo:
+            return jsonify({'error': 'Token Google invalide'}), 401
+        
+        email = idinfo.get('email')
+        name = idinfo.get('name', idinfo.get('email', 'User'))
+        picture = idinfo.get('picture', '👤')
+        
+        if not email:
+            return jsonify({'error': 'Email non trouvé dans le token Google'}), 400
+        
+        # Chercher ou créer l'utilisateur
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            # Créer un nouvel utilisateur
+            username = name.replace(' ', '_').lower()
+            # S'assurer que le username est unique
+            base_username = username
+            counter = 1
+            while User.query.filter_by(username=username).first():
+                username = f"{base_username}_{counter}"
+                counter += 1
+            
+            user = User(
+                username=username,
+                email=email,
+                avatar=picture if picture != '👤' else picture,
+                tag=generate_tag()
+            )
+            # Les utilisateurs Google n'ont pas de mot de passe
+            user.set_password(secrets.token_urlsafe(16))
+            
+            db.session.add(user)
+            db.session.commit()
+        
+        # Update status
+        user.status = 'online'
+        db.session.commit()
+        
+        # Créer le JWT
+        access_token = create_access_token(identity=user.id)
+        
+        return jsonify({
+            'message': 'Connecté via Google',
+            'user': user.to_dict(),
+            'access_token': access_token
+        }), 200
+        
+    except Exception as e:
+        print(f"Erreur Google OAuth: {str(e)}")
+        return jsonify({'error': f'Erreur d\'authentification Google: {str(e)}'}), 500
+
 @app.route('/api/auth/me', methods=['GET'])
 @jwt_required()
 def get_me():
@@ -220,59 +327,321 @@ def update_me():
 @jwt_required()
 def get_servers():
     """Récupère les serveurs de l'utilisateur"""
-    user_id = get_jwt_identity()
-    user = User.query.get(user_id)
-    
-    seen = set()
-    result = []
-    for srv in user.servers + user.owned_servers:
-        if srv.id not in seen:
-            seen.add(srv.id)
-            result.append(srv)
-    return jsonify([srv.to_dict() for srv in result]), 200
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'Utilisateur non trouvé'}), 404
+        
+        # Récupérer serveurs où l'utilisateur est propriétaire
+        result = []
+        seen = set()
+        
+        # Ajouter les serveurs possédés
+        for srv in user.owned_servers:
+            if srv.id not in seen:
+                seen.add(srv.id)
+                result.append(srv)
+        
+        # Ajouter les serveurs via les memberships
+        for member in user.server_memberships:
+            if member.server_id not in seen:
+                seen.add(member.server_id)
+                result.append(member.server_obj)
+        
+        return jsonify([srv.to_dict() for srv in result]), 200
+    except Exception as e:
+        print(f"Erreur get_servers: {str(e)}")
+        return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
 
 @app.route('/api/servers', methods=['POST'])
 @jwt_required()
 def create_server():
     """Crée un nouveau serveur"""
-    user_id = get_jwt_identity()
-    data = request.json
-    
-    server = Server(
-        name=data.get('name', 'Nouveau Serveur'),
-        icon=data.get('icon', '🎪'),
-        owner_id=user_id,
-        description=data.get('description', '')
-    )
-    
-    db.session.add(server)
-    db.session.commit()
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'Utilisateur non authentifié'}), 401
+        
+        data = request.json or {}
+        name = data.get('name', 'Nouveau Serveur').strip()
+        icon = data.get('icon', '🎪').strip() or '🎪'
+        
+        if not name:
+            return jsonify({'error': 'Le nom du serveur est obligatoire'}), 400
+        
+        server = Server(
+            name=name,
+            icon=icon,
+            owner_id=user_id,
+            description=data.get('description', '').strip()
+        )
+        
+        db.session.add(server)
+        db.session.flush()  # Get server.id without committing
+        
+        # Créer un channel par défaut
+        default_channel = Channel(
+            name='général',
+            server_id=server.id,
+            type='text',
+            description='Salon principal'
+        )
+        db.session.add(default_channel)
+        
+        # Ajouter l'owner comme membre du serveur
+        member = ServerMember(user_id=user_id, server_id=server.id)
+        db.session.add(member)
+        
+        db.session.commit()
 
-    # Ajouter l'owner comme membre + créer un canal par défaut
-    user = User.query.get(user_id)
-    if user not in server.members:
-        server.members.append(user)
-    default_channel = Channel(
-        name='général',
-        server_id=server.id,
-        type='text',
-        description='Salon principal'
-    )
-    db.session.add(default_channel)
-    db.session.commit()
-
-    return jsonify(server.to_dict()), 201
+        return jsonify(server.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erreur create_server: {str(e)}")
+        return jsonify({'error': f'Erreur lors de la création: {str(e)}'}), 500
 
 @app.route('/api/servers/<server_id>', methods=['GET'])
 @jwt_required()
 def get_server(server_id):
     """Récupère les détails d'un serveur"""
+    try:
+        server = Server.query.get(server_id)
+        
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        return jsonify(server.to_dict()), 200
+    except Exception as e:
+        print(f"Erreur get_server: {str(e)}")
+        return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
+
+@app.route('/api/servers/<server_id>', methods=['PATCH'])
+@jwt_required()
+def update_server(server_id):
+    """Met à jour les infos du serveur"""
+    try:
+        user_id = get_jwt_identity()
+        server = Server.query.get(server_id)
+        
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        # Vérifier que l'utilisateur est le propriétaire
+        if server.owner_id != user_id:
+            return jsonify({'error': 'Accès refusé'}), 403
+        
+        data = request.json or {}
+        
+        if 'name' in data:
+            server.name = data['name']
+        if 'description' in data:
+            server.description = data['description']
+        if 'icon' in data:
+            server.icon = data['icon']
+        
+        db.session.commit()
+        return jsonify(server.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erreur update_server: {str(e)}")
+        return jsonify({'error': f'Erreur lors de la mise à jour: {str(e)}'}), 500
+
+@app.route('/api/servers/<server_id>', methods=['DELETE'])
+@jwt_required()
+def delete_server(server_id):
+    """Supprime un serveur et tous ses contenus"""
+    try:
+        user_id = get_jwt_identity()
+        server = Server.query.get(server_id)
+        
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        # Vérifier que l'utilisateur est le propriétaire
+        if server.owner_id != user_id:
+            return jsonify({'error': 'Accès refusé'}), 403
+        
+        # Supprimer les channels, rôles, membres, messages
+        Channel.query.filter_by(server_id=server_id).delete()
+        Role.query.filter_by(server_id=server_id).delete()
+        ServerMember.query.filter_by(server_id=server_id).delete()
+        
+        # Supprimer le serveur
+        db.session.delete(server)
+        db.session.commit()
+        
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erreur delete_server: {str(e)}")
+        return jsonify({'error': f'Erreur lors de la suppression: {str(e)}'}), 500
+
+@app.route('/api/servers/<server_id>/upload-icon', methods=['POST'])
+@jwt_required()
+def upload_server_icon(server_id):
+    """Upload une image comme icône de serveur"""
+    user_id = get_jwt_identity()
     server = Server.query.get(server_id)
     
     if not server:
         return jsonify({'error': 'Serveur non trouvé'}), 404
     
-    return jsonify(server.to_dict()), 200
+    # Vérifier que l'utilisateur est le propriétaire
+    if server.owner_id != user_id:
+        return jsonify({'error': 'Accès refusé'}), 403
+    
+    if 'icon' not in request.files:
+        return jsonify({'error': 'Aucun fichier envoyé'}), 400
+    
+    file = request.files['icon']
+    if file.filename == '':
+        return jsonify({'error': 'Nom de fichier vide'}), 400
+    
+    allowed = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    if ext not in allowed:
+        return jsonify({'error': 'Type de fichier non supporté'}), 400
+    
+    # Sauvegarder l'image
+    server_icons_dir = BASE_DIR / 'server_icons'
+    server_icons_dir.mkdir(exist_ok=True)
+    filename = f"{uuid.uuid4()}.{ext}"
+    file_path = server_icons_dir / filename
+    file.save(str(file_path))
+    
+    server.icon_image = f"/server_icons/{filename}"
+    db.session.commit()
+    
+    return jsonify({'icon_image': server.icon_image}), 200
+
+# ═══════════════════════════════════════════════════
+# RÔLES - ROUTES
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/servers/<server_id>/roles', methods=['GET'])
+@jwt_required()
+def get_server_roles(server_id):
+    """Récupère les rôles d'un serveur"""
+    try:
+        server = Server.query.get(server_id)
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        return jsonify([r.to_dict() for r in server.roles]), 200
+    except Exception as e:
+        print(f"Erreur get_server_roles: {str(e)}")
+        return jsonify({'error': f'Erreur: {str(e)}'}), 500
+
+@app.route('/api/servers/<server_id>/roles', methods=['POST'])
+@jwt_required()
+def create_role(server_id):
+    """Crée un nouveau rôle"""
+    try:
+        user_id = get_jwt_identity()
+        server = Server.query.get(server_id)
+        
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        # Vérifier que l'utilisateur est propriétaire
+        if server.owner_id != user_id:
+            return jsonify({'error': 'Accès refusé'}), 403
+        
+        data = request.json or {}
+        name = data.get('name', 'Nouveau Rôle').strip()
+        
+        if not name:
+            return jsonify({'error': 'Le nom du rôle est obligatoire'}), 400
+        
+        role = Role(
+            name=name,
+            server_id=server_id,
+            color=data.get('color', '#94a3b8'),
+            permissions=data.get('permissions', {
+                'manage_server': False,
+                'manage_roles': False,
+                'manage_channels': False,
+                'manage_members': False,
+                'send_messages': True,
+                'send_files': True,
+                'mention_everyone': False,
+                'manage_messages': False,
+                'mute_members': False
+            })
+        )
+        
+        db.session.add(role)
+        db.session.commit()
+        
+        return jsonify(role.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erreur create_role: {str(e)}")
+        return jsonify({'error': f'Erreur: {str(e)}'}), 500
+
+@app.route('/api/servers/<server_id>/roles/<role_id>', methods=['PATCH'])
+@jwt_required()
+def update_role(server_id, role_id):
+    """Modifie un rôle"""
+    try:
+        user_id = get_jwt_identity()
+        server = Server.query.get(server_id)
+        
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        if server.owner_id != user_id:
+            return jsonify({'error': 'Accès refusé'}), 403
+        
+        role = Role.query.filter_by(id=role_id, server_id=server_id).first()
+        if not role:
+            return jsonify({'error': 'Rôle non trouvé'}), 404
+        
+        data = request.json or {}
+        if 'name' in data:
+            role.name = data['name'].strip()
+        if 'color' in data:
+            role.color = data['color']
+        if 'permissions' in data:
+            role.permissions = data['permissions']
+        
+        db.session.commit()
+        return jsonify(role.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erreur update_role: {str(e)}")
+        return jsonify({'error': f'Erreur: {str(e)}'}), 500
+
+@app.route('/api/servers/<server_id>/roles/<role_id>', methods=['DELETE'])
+@jwt_required()
+def delete_role(server_id, role_id):
+    """Supprime un rôle"""
+    try:
+        user_id = get_jwt_identity()
+        server = Server.query.get(server_id)
+        
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        if server.owner_id != user_id:
+            return jsonify({'error': 'Accès refusé'}), 403
+        
+        role = Role.query.filter_by(id=role_id, server_id=server_id).first()
+        if not role:
+            return jsonify({'error': 'Rôle non trouvé'}), 404
+        
+        db.session.delete(role)
+        db.session.commit()
+        
+        return jsonify({'message': 'Rôle supprimé'}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erreur delete_role: {str(e)}")
+        return jsonify({'error': f'Erreur: {str(e)}'}), 500
 
 # ═══════════════════════════════════════════════════
 # CANAUX - ROUTES
@@ -314,6 +683,33 @@ def create_channel(server_id):
     db.session.commit()
     
     return jsonify(channel.to_dict()), 201
+
+@app.route('/api/servers/<server_id>/members', methods=['GET'])
+@jwt_required()
+def get_server_members(server_id):
+    """Récupère les membres d'un serveur"""
+    try:
+        server = Server.query.get(server_id)
+        
+        if not server:
+            return jsonify({'error': 'Serveur non trouvé'}), 404
+        
+        members = ServerMember.query.filter_by(server_id=server_id).all()
+        
+        result = []
+        for m in members:
+            result.append({
+                'user_id': m.user_id,
+                'username': m.user.username,
+                'avatar': m.user.avatar,
+                'role_id': m.role_id,
+                'joined_at': m.joined_at.isoformat()
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        print(f"Erreur get_server_members: {str(e)}")
+        return jsonify({'error': f'Erreur: {str(e)}'}), 500
 
 # ═══════════════════════════════════════════════════
 # MESSAGES - ROUTES (historique)
@@ -457,7 +853,7 @@ def get_dm_history(friend_id):
 # ═══════════════════════════════════════════════════
 
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth=None):
     """Connexion WebSocket"""
     print(f"🔗 Client connecté: {request.sid}")
     emit('connect_response', {'message': 'Connecté au serveur'})

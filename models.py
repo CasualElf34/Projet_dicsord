@@ -31,7 +31,6 @@ class User(db.Model):
     
     # Relations
     messages = db.relationship('Message', backref='author', lazy=True, cascade='all, delete-orphan')
-    servers = db.relationship('Server', secondary='server_members', backref='members')
     
     def set_password(self, password):
         """Hash et stocke le mot de passe"""
@@ -62,6 +61,7 @@ class Server(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(100), nullable=False)
     icon = db.Column(db.String(10), default='🎪')
+    icon_image = db.Column(db.String(255), default=None)  # URL vers image du serveur
     owner_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
     description = db.Column(db.String(500), default='')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -69,15 +69,19 @@ class Server(db.Model):
     # Relations
     owner = db.relationship('User', backref='owned_servers')
     channels = db.relationship('Channel', backref='server', lazy=True, cascade='all, delete-orphan')
+    roles = db.relationship('Role', backref='server', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
             'icon': self.icon,
+            'icon_image': self.icon_image,
             'owner_id': self.owner_id,
             'description': self.description,
             'channels': [ch.to_dict() for ch in self.channels],
+            'roles': [r.to_dict() for r in self.roles],
+            'members': [m.to_dict() for m in self.memberships],
             'created_at': self.created_at.isoformat()
         }
 
@@ -105,6 +109,61 @@ class Channel(db.Model):
             'description': self.description,
             'created_at': self.created_at.isoformat()
         }
+
+
+class Role(db.Model):
+    """Modèle rôle serveur"""
+    __tablename__ = 'roles'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(50), nullable=False)
+    server_id = db.Column(db.String(36), db.ForeignKey('servers.id'), nullable=False)
+    color = db.Column(db.String(7), default='#94a3b8')  # Couleur du rôle
+    permissions = db.Column(db.JSON, default={
+        'manage_server': False,
+        'manage_roles': False,
+        'manage_channels': False,
+        'manage_members': False,
+        'send_messages': True,
+        'send_files': True,
+        'mention_everyone': False,
+        'manage_messages': False,
+        'mute_members': False
+    })
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'server_id': self.server_id,
+            'color': self.color,
+            'permissions': self.permissions,
+            'created_at': self.created_at.isoformat()
+        }
+
+
+class ServerMember(db.Model):
+    """Assocation user-server avec rôle"""
+    __tablename__ = 'server_members'
+    
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), primary_key=True)
+    server_id = db.Column(db.String(36), db.ForeignKey('servers.id'), primary_key=True)
+    role_id = db.Column(db.String(36), db.ForeignKey('roles.id'), nullable=True)
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref='server_memberships')
+    server = db.relationship('Server', backref='memberships')
+    
+    def to_dict(self):
+        return {
+            'user_id': self.user_id,
+            'username': self.user.username,
+            'avatar': self.user.avatar,
+            'role_id': self.role_id,
+            'joined_at': self.joined_at.isoformat()
+        }
+    role = db.relationship('Role', backref='members')
 
 
 class Message(db.Model):
@@ -173,10 +232,3 @@ class FriendRequest(db.Model):
             'status': self.status,
             'created_at': self.created_at.isoformat()
         }
-
-
-# Association table pour les serveurs et membres
-server_members = db.Table('server_members',
-    db.Column('user_id', db.String(36), db.ForeignKey('users.id'), primary_key=True),
-    db.Column('server_id', db.String(36), db.ForeignKey('servers.id'), primary_key=True)
-)

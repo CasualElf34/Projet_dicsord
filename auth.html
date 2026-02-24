@@ -161,6 +161,60 @@
       transform: none;
     }
 
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 24px 0;
+      gap: 12px;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(124, 106, 247, 0.2);
+    }
+
+    .divider-text {
+      font-size: 13px;
+      color: #94a3b8;
+      white-space: nowrap;
+    }
+
+    .button-google {
+      width: 100%;
+      padding: 12px 16px;
+      background: white;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      color: #1a1a1a;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .button-google:hover {
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .button-google:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .button-google img {
+      width: 20px;
+      height: 20px;
+    }
+
     .auth-toggle {
       text-align: center;
       font-size: 14px;
@@ -266,6 +320,9 @@
 </head>
 <body>
 
+<!-- Google Identity Services Library -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
 <div class="auth-container">
   <div class="auth-box">
     
@@ -291,6 +348,21 @@
       </div>
 
       <button class="button" id="login-btn" onclick="handleLogin()">Connexion</button>
+
+      <div class="divider">
+        <div class="divider-text">OU</div>
+      </div>
+
+      <button type="button" class="button-google" id="google-login-btn" onclick="handleGoogleLogin()">
+        <svg width="20" height="20" viewBox="0 0 48 48">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19c1.87-4.3 6.02-7.41 11.46-7.41z"></path>
+          <path fill="#4285F4" d="M23.99 44.5c6.47 0 11.9-2.38 15.89-6.84l-7.73-6.03c-2.25 1.45-5.09 2.3-8.16 2.3-6.35 0-11.72-4.05-13.65-9.53l-7.98 6.19C6.51 39.62 14.62 44.5 23.99 44.5z"></path>
+          <path fill="#FBBC05" d="M9.601 24c0-1.45.256-2.84.685-4.18l-7.98-6.18A23.94 23.94 0 000 24c0 3.98.703 7.8 1.987 11.36l7.995-6.18c-.398-1.42-.63-2.92-.63-4.54z"></path>
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-6.84l-7.73-6.03c-2.25 1.45-5.09 2.3-8.16 2.3-6.35 0-11.72-4.05-13.65-9.53l-7.98 6.19C6.51 39.62 14.62 44.5 23.99 44.5z" opacity="0"></path>
+          <circle cx="24" cy="24" r="7.5" fill="#EA4335"></circle>
+        </svg>
+        Connexion Google
+      </button>
 
       <div class="auth-toggle">
         Pas encore de compte? <a onclick="toggleForms()">S'inscrire</a>
@@ -328,6 +400,21 @@
 
       <button class="button" id="register-btn" onclick="handleRegister()">S'inscrire</button>
 
+      <div class="divider">
+        <div class="divider-text">OU</div>
+      </div>
+
+      <button type="button" class="button-google" id="google-register-btn" onclick="handleGoogleLogin()">
+        <svg width="20" height="20" viewBox="0 0 48 48">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19c1.87-4.3 6.02-7.41 11.46-7.41z"></path>
+          <path fill="#4285F4" d="M23.99 44.5c6.47 0 11.9-2.38 15.89-6.84l-7.73-6.03c-2.25 1.45-5.09 2.3-8.16 2.3-6.35 0-11.72-4.05-13.65-9.53l-7.98 6.19C6.51 39.62 14.62 44.5 23.99 44.5z"></path>
+          <path fill="#FBBC05" d="M9.601 24c0-1.45.256-2.84.685-4.18l-7.98-6.18A23.94 23.94 0 000 24c0 3.98.703 7.8 1.987 11.36l7.995-6.18c-.398-1.42-.63-2.92-.63-4.54z"></path>
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-6.84l-7.73-6.03c-2.25 1.45-5.09 2.3-8.16 2.3-6.35 0-11.72-4.05-13.65-9.53l-7.98 6.19C6.51 39.62 14.62 44.5 23.99 44.5z" opacity="0"></path>
+          <circle cx="24" cy="24" r="7.5" fill="#EA4335"></circle>
+        </svg>
+        Inscription Google
+      </button>
+
       <div class="auth-toggle">
         Déjà membre? <a onclick="toggleForms()">Se connecter</a>
       </div>
@@ -342,6 +429,101 @@
 
   // Initialize avatar selector
   let selectedAvatarFile = null;
+
+  // Initialiser Google dès que le script est disponible
+  function initGoogleAuth() {
+    if (window.google && google.accounts) {
+      google.accounts.id.initialize({
+        client_id: '717864681118-u9k9nv7d6708fi6dgbqdin6jl0g956ui.apps.googleusercontent.com',
+        callback: handleGoogleSignIn,
+        auto_select: false
+      });
+      console.log('✓ Google Identity initialized');
+    } else {
+      setTimeout(initGoogleAuth, 500);
+    }
+  }
+
+  // Initialiser Google dès que le DOM est prêt
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initGoogleAuth);
+  } else {
+    initGoogleAuth();
+  }
+
+  // Google OAuth Handler - Déclenche le One-Tap
+  async function handleGoogleLogin() {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading">⏳</span> Connexion...';
+
+    try {
+      if (window.google && google.accounts && google.accounts.id) {
+        google.accounts.id.prompt((notification) => {
+          if (notification.isDismissedMoment()) {
+            btn.disabled = false;
+            btn.innerHTML = 'Connexion Google';
+          }
+        });
+      } else {
+        throw new Error('Google library not loaded');
+      }
+    } catch (error) {
+      console.error('Erreur Google:', error);
+      showError(document.getElementById('login-error') || document.getElementById('register-error'), 
+                'Erreur de connexion Google');
+      btn.disabled = false;
+      btn.innerHTML = 'Connexion Google';
+    }
+  }
+
+  // Callback pour la réponse Google
+  async function handleGoogleSignIn(response) {
+    console.log('handleGoogleSignIn called', response);
+    try {
+      const token = response.credential;
+      
+      if (!token) {
+        showError(document.getElementById('login-error') || document.getElementById('register-error'),
+                  'Erreur: token Google manquant');
+        return;
+      }
+      
+      console.log('Token Google reçu, envoi au backend...');
+      
+      // Envoyer le token au backend
+      const res = await fetch('http://localhost:5000/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+
+      console.log('Réponse du backend:', res.status, res.statusText);
+      const data = await res.json();
+      console.log('Données reçues:', data);
+
+      if (res.ok && data.access_token) {
+        // Sauvegarder le token et l'utilisateur
+        console.log('Sauvegarde du token...');
+        localStorage.setItem('likoo_token', data.access_token);
+        localStorage.setItem('likoo_user', JSON.stringify(data.user));
+        
+        console.log('✓ Connecté! Redirection...');
+        // Redirection
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 500);
+      } else {
+        const err = data.error || 'Erreur d\'authentification Google';
+        console.error('Erreur backend:', err);
+        showError(document.getElementById('login-error') || document.getElementById('register-error'), err);
+      }
+    } catch (error) {
+      console.error('Erreur Google Sign-In:', error);
+      showError(document.getElementById('login-error') || document.getElementById('register-error'),
+                'Erreur: ' + error.message);
+    }
+  }
 
   function initAvatars() {
     const selector = document.getElementById('avatar-selector');

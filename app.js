@@ -119,6 +119,11 @@ function boot() {
   if (saved) {
     try { APP.me = JSON.parse(saved); } catch(e) {}
   }
+  // Charger aussi le token
+  const token = localStorage.getItem('likoo_token');
+  if (token && APP.me) {
+    APP.me.token = token;
+  }
   if (APP.me) {
     startApp();
   } else {
@@ -138,7 +143,47 @@ function detectLayout() {
 }
 
 function startApp() {
-  buildDemoData();
+  // Charger les serveurs depuis l'API si on a un token
+  if (APP.me?.token) {
+    loadUserServers();
+  } else {
+    // Fallback: données de démo
+    buildDemoData();
+    renderUI();
+  }
+}
+
+async function loadUserServers() {
+  try {
+    const response = await fetch('/api/servers', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + APP.me.token }
+    });
+    const servers = await response.json();
+    
+    if (Array.isArray(servers)) {
+      APP.servers = servers;
+      // Initialiser messages vides
+      servers.forEach(srv => {
+        srv.channels.forEach(ch => {
+          if (!APP.messages[ch.id]) {
+            APP.messages[ch.id] = [];
+          }
+        });
+      });
+    } else {
+      // Si erreur, utiliser données démo
+      buildDemoData();
+    }
+  } catch (err) {
+    console.error('Erreur chargement serveurs:', err);
+    // Fallback: données de démo
+    buildDemoData();
+  }
+  renderUI();
+}
+
+function renderUI() {
   renderUserDock();
   renderServers();
   if (!APP.isMobile) {
@@ -336,6 +381,14 @@ function renderChat() {
   const barIcon = q('#chat-icon');
   const barName = q('#chat-name');
   const barDesc = q('#chat-desc');
+  
+  // Show/hide settings button - only for server owner on server channel
+  const settingsBtn = q('#serverSettingsBtn');
+  if (settingsBtn) {
+    const isOwner = APP.activeSrv && APP.activeSrv.owner_id === APP.me?.id;
+    const isServerView = APP.view === 'server' && APP.activeSrv;
+    settingsBtn.style.display = (isOwner && isServerView) ? 'flex' : 'none';
+  }
 
   if (APP.view === 'dm' && APP.dmChannel) {
     const u = DEMO_DMS.find(d=>d.id===APP.dmChannel);
@@ -904,6 +957,396 @@ function showRestoreBtn(id) {
   btn.textContent = '🔲 ' + (names[id]||id);
   btn.onclick = () => { const p=q(`#${id}`); if(p){p.style.display='flex';} btn.remove(); };
   document.body.appendChild(btn);
+}
+
+// ─────────────────────────────────────────────
+// SERVER SETTINGS
+// ─────────────────────────────────────────────
+function openServerSettings() {
+  if (!APP.activeSrv) return;
+  // Only owner can change settings
+  if (APP.activeSrv.owner_id !== APP.me.id) {
+    alert('Seul le propriétaire peut modifier les paramètres');
+    return;
+  }
+  // Load current settings
+  document.getElementById('serverSettingsName').value = APP.activeSrv.name || '';
+  document.getElementById('serverSettingsDesc').value = APP.activeSrv.description || '';
+  updateServerIconPreview();
+  // Clear messages
+  document.getElementById('serverSettingsError').style.display = 'none';
+  document.getElementById('serverSettingsSuccess').style.display = 'none';
+  document.getElementById('rolesError').style.display = 'none';
+  // Switch to General tab by default
+  switchServerTab('general');
+  // Open modal
+  openModal('modalServerSettings');
+}
+
+function updateServerIconPreview() {
+  const preview = document.getElementById('serverIconPreview');
+  if (APP.activeSrv.icon_image) {
+    // Has custom image
+    preview.style.fontSize = '0';
+    preview.innerHTML = `<img src="${APP.activeSrv.icon_image}" style="width:100%;height:100%;border-radius:16px;object-fit:cover" alt="icon">`;
+  } else {
+    // Show emoji fallback
+    preview.style.fontSize = '32px';
+    preview.innerHTML = APP.activeSrv.emoji || '🏠';
+  }
+}
+
+function handleServerIconUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  // Validate file
+  if (!file.type.startsWith('image/')) {
+    showServerSettingsError('Veuillez sélectionner une image');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) { // 5MB max
+    showServerSettingsError('L\'image ne doit pas dépasser 5 MB');
+    return;
+  }
+  
+  // Show preview
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('serverIconPreview');
+    preview.style.fontSize = '0';
+    preview.innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;border-radius:16px;object-fit:cover" alt="preview">`;
+    // Store for later save
+    input.dataset.processed = 'true';
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveServerSettings() {
+  const name = document.getElementById('serverSettingsName').value.trim();
+  const desc = document.getElementById('serverSettingsDesc').value.trim();
+  const iconInput = document.getElementById('serverIconInput');
+  
+  if (!name) {
+    showServerSettingsError('Le nom du serveur est obligatoire');
+    return;
+  }
+  
+  if (!APP.activeSrv || APP.activeSrv.owner_id !== APP.me.id) {
+    showServerSettingsError('Accès non autorisé');
+    return;
+  }
+  
+  if (!APP.me.token) {
+    showServerSettingsError('Non authentifié');
+    return;
+  }
+  
+  const doneCount = { total: 1, done: 0 };
+  
+  // First update name/description
+  fetch(`/api/servers/${APP.activeSrv.id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + APP.me.token
+    },
+    body: JSON.stringify({ name, description: desc })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      showServerSettingsError(data.error);
+      return;
+    }
+    // Update local state
+    APP.activeSrv.name = name;
+    APP.activeSrv.description = desc;
+    doneCount.done++;
+    checkSettingsSaved();
+  })
+  .catch(err => {
+    console.error('Settings save error:', err);
+    showServerSettingsError('Erreur lors de la sauvegarde');
+  });
+  
+  // Then upload icon if selected
+  if (iconInput.files.length > 0) {
+    doneCount.total++;
+    const form = new FormData();
+    form.append('icon', iconInput.files[0]);
+    
+    fetch(`/api/servers/${APP.activeSrv.id}/upload-icon`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + APP.me.token },
+      body: form
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        console.warn('Icon upload warning:', data.error);
+      } else if (data.icon_image) {
+        APP.activeSrv.icon_image = data.icon_image;
+        updateServerIconPreview();
+      }
+      doneCount.done++;
+      checkSettingsSaved();
+    })
+    .catch(err => {
+      console.error('Icon upload error:', err);
+      doneCount.done++;
+      checkSettingsSaved();
+    });
+  }
+  
+  function checkSettingsSaved() {
+    if (doneCount.done === doneCount.total) {
+      showServerSettingsSuccess('Paramètres enregistrés avec succès');
+      save();
+      renderServers();
+      renderChannels();
+      setTimeout(() => closeModal('modalServerSettings'), 1500);
+    }
+  }
+}
+
+function showServerSettingsError(msg) {
+  const errDiv = document.getElementById('serverSettingsError');
+  errDiv.textContent = msg;
+  errDiv.style.display = 'block';
+  const sucDiv = document.getElementById('serverSettingsSuccess');
+  sucDiv.style.display = 'none';
+}
+
+function showServerSettingsSuccess(msg) {
+  const sucDiv = document.getElementById('serverSettingsSuccess');
+  sucDiv.textContent = msg;
+  sucDiv.style.display = 'block';
+  const errDiv = document.getElementById('serverSettingsError');
+  errDiv.style.display = 'none';
+}
+
+// ─────────────────────────────────────────────
+// SERVER SETTINGS TABS & ROLES
+// ─────────────────────────────────────────────
+
+function switchServerTab(tabName) {
+  // Hide all tabs
+  const tabs = document.querySelectorAll('.settings-tab-content');
+  tabs.forEach(t => t.style.display = 'none');
+  
+  // Deactivate all tab buttons
+  const buttons = document.querySelectorAll('.settings-tab');
+  buttons.forEach(b => {
+    b.style.color = '#999';
+    b.style.borderBottom = 'none';
+  });
+  
+  // Show selected tab
+  const tabEl = document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+  if (tabEl) {
+    tabEl.style.display = 'block';
+  }
+  
+  // Find and activate the correct tab button
+  let tabButton = null;
+  buttons.forEach(b => {
+    if (tabName === 'general' && b.textContent.includes('Général')) {
+      tabButton = b;
+    } else if (tabName === 'roles' && b.textContent.includes('Rôles')) {
+      tabButton = b;
+    }
+  });
+  
+  if (tabButton) {
+    tabButton.style.color = '#8b5cf6';
+    tabButton.style.borderBottom = '2px solid #8b5cf6';
+  }
+  
+  // Load roles if switching to roles tab
+  if (tabName === 'roles') {
+    loadServerRoles();
+  }
+}
+
+async function loadServerRoles() {
+  if (!APP.activeSrv || !APP.me.token) return;
+  
+  try {
+    const response = await fetch(`/api/servers/${APP.activeSrv.id}/roles`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + APP.me.token }
+    });
+    const data = await response.json();
+    
+    if (!data.roles) {
+      document.getElementById('rolesList').innerHTML = '<p style="color:#999">Aucun rôle créé</p>';
+      return;
+    }
+    
+    let html = '';
+    data.roles.forEach(role => {
+      html += `
+        <div style="border:1px solid #ddd;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:12px;flex:1">
+            <div style="width:20px;height:20px;background-color:${role.color || '#8b5cf6'};border-radius:4px"></div>
+            <div>
+              <strong>${esc(role.name)}</strong>
+              <p style="font-size:11px;color:#999;margin:2px 0">${Object.entries(role.permissions || {}).filter(([k,v]) => v).map(([k]) => k).join(', ') || 'Pas de permissions'}</p>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" data-role-id="${role.id}" onclick="editRole('${role.id}')" style="padding:6px 12px;font-size:11px">✎</button>
+            <button class="btn btn-danger" data-role-id="${role.id}" onclick="deleteRole('${role.id}')" style="padding:6px 12px;font-size:11px">✕</button>
+          </div>
+        </div>
+      `;
+    });
+    
+    document.getElementById('rolesList').innerHTML = html;
+  } catch (err) {
+    console.error('Error loading roles:', err);
+    document.getElementById('rolesError').textContent = 'Erreur lors du chargement des rôles';
+    document.getElementById('rolesError').style.display = 'block';
+  }
+}
+
+function addNewRole() {
+  const rolesList = document.getElementById('rolesList');
+  
+  // Check if form already exists
+  if (rolesList.querySelector('[data-form="create-role"]')) return;
+  
+  const permissions = {
+    manage_server: true,
+    manage_roles: false,
+    manage_channels: false,
+    manage_members: false,
+    send_messages: true,
+    send_files: false,
+    mention_everyone: false,
+    manage_messages: false,
+    mute_members: false
+  };
+  
+  let permissionsHTML = '';
+  Object.entries(permissions).forEach(([key, defaultVal]) => {
+    const formattedKey = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    permissionsHTML += `
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:8px">
+        <input type="checkbox" class="perm-checkbox" data-perm="${key}" value="${key}" ${defaultVal ? 'checked' : ''}>
+        ${formattedKey}
+      </label>
+    `;
+  });
+  
+  const formHTML = `
+    <div data-form="create-role" style="border:2px solid #8b5cf6;border-radius:8px;padding:12px;background:#f9f3ff">
+      <h4 style="margin:0 0 12px 0;font-size:14px">Nouveau Rôle</h4>
+      
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:#666">Nom du rôle</label>
+        <input type="text" id="newRoleName" placeholder="Ex: Modérateur" maxlength="50" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:4px;font-size:12px">
+      </div>
+      
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:#666">Couleur</label>
+        <input type="color" id="newRoleColor" value="#8b5cf6" style="width:100%;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer;margin-top:4px">
+      </div>
+      
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:#666;display:block;margin-bottom:8px">Permissions</label>
+        <div style="background:white;padding:8px;border-radius:4px;border:1px solid #ddd">
+          ${permissionsHTML}
+        </div>
+      </div>
+      
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="cancelNewRole()" style="padding:6px 12px;font-size:12px">Annuler</button>
+        <button class="btn btn-primary" onclick="createRole()" style="padding:6px 12px;font-size:12px">Créer</button>
+      </div>
+    </div>
+  `;
+  
+  rolesList.insertAdjacentHTML('afterbegin', formHTML);
+  document.getElementById('newRoleName').focus();
+}
+
+function cancelNewRole() {
+  const form = document.querySelector('[data-form="create-role"]');
+  if (form) form.remove();
+}
+
+async function createRole() {
+  const name = document.getElementById('newRoleName').value.trim();
+  const color = document.getElementById('newRoleColor').value;
+  
+  if (!name) {
+    alert('Le nom du rôle est obligatoire');
+    return;
+  }
+  
+  // Gather permissions
+  const permissions = {};
+  document.querySelectorAll('.perm-checkbox').forEach(cb => {
+    permissions[cb.dataset.perm] = cb.checked;
+  });
+  
+  if (!APP.activeSrv || !APP.me.token) return;
+  
+  try {
+    const response = await fetch(`/api/servers/${APP.activeSrv.id}/roles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + APP.me.token
+      },
+      body: JSON.stringify({ name, color, permissions })
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      alert('Erreur: ' + data.error);
+      return;
+    }
+    
+    cancelNewRole();
+    loadServerRoles();
+  } catch (err) {
+    console.error('Error creating role:', err);
+    alert('Erreur lors de la création du rôle');
+  }
+}
+
+function editRole(roleId) {
+  // This is a placeholder - can be expanded for full edit UI
+  alert('Édition de rôle - À développer');
+}
+
+async function deleteRole(roleId) {
+  if (!confirm('Êtes-vous sûr de vouloir supprimer ce rôle?')) return;
+  
+  if (!APP.activeSrv || !APP.me.token) return;
+  
+  try {
+    const response = await fetch(`/api/servers/${APP.activeSrv.id}/roles/${roleId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + APP.me.token }
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      alert('Erreur: ' + data.error);
+      return;
+    }
+    
+    loadServerRoles();
+  } catch (err) {
+    console.error('Error deleting role:', err);
+    alert('Erreur lors de la suppression du rôle');
+  }
 }
 
 // ─────────────────────────────────────────────
