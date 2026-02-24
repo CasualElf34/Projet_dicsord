@@ -6,6 +6,7 @@
 <title>Likoo</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body data-theme="amber">
 
@@ -135,6 +136,35 @@
 </div>
 
 <!-- Create Server -->
+<!-- MODAL AJOUTER AMI -->
+<div class="overlay" id="modalAddFriend">
+  <div class="modal" style="max-width:420px">
+    <h2>➕ Ajouter un ami</h2>
+    <p class="sub">Entre le pseudo et le tag de ton ami (ex: Alex#1234)</p>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="friendUsername" placeholder="Pseudo" style="flex:1">
+      <input type="text" id="friendTag" placeholder="#Tag" style="width:80px" maxlength="4">
+    </div>
+    <div id="friendRequestError" style="color:#f87171;font-size:12px;margin-top:6px;display:none"></div>
+    <div id="friendRequestSuccess" style="color:#4ade80;font-size:12px;margin-top:6px;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddFriend')">Annuler</button>
+      <button class="btn btn-primary" onclick="sendFriendRequest()">Envoyer la demande</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DEMANDES D'AMI -->
+<div class="overlay" id="modalFriendRequests">
+  <div class="modal" style="max-width:440px">
+    <h2>👥 Demandes d'ami</h2>
+    <div id="friendRequestsList" style="display:flex;flex-direction:column;gap:10px;margin:16px 0;max-height:300px;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalFriendRequests')">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modalCreateServer">
   <div class="modal">
     <h2>Créer un serveur ✨</h2>
@@ -372,9 +402,12 @@
       </div>
     </div>
 
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('modalSettings')">Fermer</button>
-      <button class="btn btn-primary" onclick="saveSettings()">Sauvegarder</button>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn btn-ghost" onclick="logout()" style="color:#f87171;border-color:#f8717140">⏻ Se déconnecter</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="closeModal('modalSettings')">Fermer</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Sauvegarder</button>
+      </div>
     </div>
   </div>
 </div>
@@ -398,6 +431,8 @@ const S = {
   membersVisible: true,
   compact: false,
   anim: true,
+  friends: [],
+  pendingRequests: 0,
 };
 
 const COLORS  = ['#e8850a','#8b5cf6','#ec4899','#14b8a6','#3b82f6','#22c55e','#ef4444','#f59e0b'];
@@ -443,13 +478,14 @@ function uploadAvatar(input){
   };
   reader.readAsDataURL(file);
   // send to server immediately if logged in
-  if(S.me && S.me.token){
+  const _avatarToken = localStorage.getItem('likoo_token');
+  if(S.me && _avatarToken){
     const form = new FormData();
     form.append('avatar', file);
-    fetch('/api/auth/avatar',{
+    fetch('http://localhost:5000/api/auth/avatar',{
       method:'POST',
       body: form,
-      headers:{'Authorization':'Bearer '+S.me.token}
+      headers:{'Authorization':'Bearer '+_avatarToken}
     }).then(r=>r.json()).then(data=>{
       if(data.avatar){
         // backend returns path/url, update local state
@@ -499,23 +535,117 @@ const DEMO_DMS = [
 // BOOT
 // ═══════════════════════════════════════════════
 window.onload = function() {
-  const saved = localStorage.getItem('likoo_me');
   const savedTheme = localStorage.getItem('likoo_theme');
   const savedLayout = localStorage.getItem('likoo_layout');
   if (savedTheme) applyThemeVal(savedTheme);
   if (savedLayout) applyLayoutVal(savedLayout);
-  if (saved) { S.me = JSON.parse(saved); startApp(); }
-  else openModal('modalSetup');
   buildEmoji();
+
+  const token = localStorage.getItem('likoo_token');
+  const userJson = localStorage.getItem('likoo_user');
+
+  if (!token || !userJson) {
+    window.location.href = '/auth.html';
+    return;
+  }
+
+  try {
+    const u = JSON.parse(userJson);
+    S.me = {
+      id: u.id,
+      name: u.username || u.name,
+      av: u.avatar || u.av || '🦊',
+      color: u.color || '#94a3b8',
+      status: u.status || 'online',
+      tag: u.tag || '0000'
+    };
+  } catch(e) {
+    window.location.href = '/auth.html';
+    return;
+  }
+
+  fetch('http://localhost:5000/api/auth/me', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  }).then(r => {
+    if (r.status === 401) {
+      localStorage.removeItem('likoo_token');
+      localStorage.removeItem('likoo_user');
+      window.location.href = '/auth.html';
+      return null;
+    }
+    return r.json();
+  }).then(u => {
+    if (!u) return;
+    S.me.id = u.id;
+    S.me.name = u.username;
+    S.me.av = u.avatar;
+    S.me.color = u.color || S.me.color;
+    S.me.status = u.status || 'online';
+    S.me.tag = u.tag;
+    startApp();
+  }).catch(() => {
+    // Réseau indisponible — démarrage hors-ligne avec cache
+    startApp();
+  });
 };
 
 function startApp() {
-  buildDemo();
-  renderNav();
-  selectServer(S.servers[0].id);
-  renderMembers();
   renderUserDock();
   updateNavAv();
+  initSocket();
+  loadServers();
+  loadFriends();
+}
+
+function showToast(msg) {
+  let t = document.getElementById('_toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = '_toast';
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg3);color:var(--text1);padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;box-shadow:0 4px 20px #0006;transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 3500);
+}
+
+async function loadServers() {
+  const token = localStorage.getItem('likoo_token');
+  try {
+    const r = await fetch('http://localhost:5000/api/servers', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) throw new Error('fetch failed');
+    const servers = await r.json();
+    S.servers = servers.map(srv => ({
+      id: srv.id,
+      name: srv.name,
+      emoji: srv.icon || '🌐',
+      channels: (srv.channels || []).map(ch => ({
+        id: ch.id,
+        name: ch.name,
+        type: ch.type || 'text',
+        desc: ch.description || '',
+        notif: 0
+      })),
+      members: []
+    }));
+    renderNav();
+    if (S.servers.length > 0) {
+      selectServer(S.servers[0].id);
+    } else {
+      renderChannels();
+    }
+    renderMembers();
+  } catch(e) {
+    console.error('loadServers error:', e);
+    buildDemo();
+    renderNav();
+    if (S.servers.length > 0) selectServer(S.servers[0].id);
+    renderMembers();
+  }
 }
 
 function buildDemo() {
@@ -557,7 +687,179 @@ function setupAccount() {
   S.me={name:n,tag:t,av:AVATARS[rnd(0,11)],color:COLORS[rnd(0,7)],status:'online'};
   save(); closeModal('modalSetup'); startApp();
 }
-function save(){localStorage.setItem('likoo_me',JSON.stringify(S.me));}
+function save(){localStorage.setItem('likoo_user',JSON.stringify(S.me));}
+
+// ═══════════════════════════════════════════════
+// WEBSOCKET
+// ═══════════════════════════════════════════════
+let socket = null;
+
+function initSocket() {
+  if (socket) return;
+  socket = io('http://localhost:5000');
+
+  socket.on('connect', () => {
+    if (S.activeCh) socket.emit('join_channel', { channel_id: S.activeCh });
+    // Rejoindre la room personnelle pour les notifs (demandes d'ami, etc.)
+    if (S.me?.id) socket.emit('join_user_room', { user_id: S.me.id });
+  });
+
+  socket.on('friend_request', (fr) => {
+    S.pendingRequests = (S.pendingRequests || 0) + 1;
+    if (!S._pendingList) S._pendingList = [];
+    S._pendingList.push(fr);
+    renderNav();
+    if (S.view === 'dm') renderChannels();
+    // Petite notification visuelle
+    const name = fr.sender?.username || 'Quelqu\'un';
+    showToast(`👥 ${name} t'a envoyé une demande d'ami !`);
+  });
+
+  socket.on('friend_accepted', (fr) => {
+    loadFriends();
+    const name = fr.receiver?.username || 'Quelqu\'un';
+    showToast(`✅ ${name} a accepté ta demande d'ami !`);
+  });
+
+  socket.on('new_dm', (msg) => {
+    const key = msg.sender_id === S.me.id ? msg.receiver_id : msg.sender_id;
+    if (!S.messages[key]) S.messages[key] = [];
+    // Ignorer nos propres messages (déjà affichés en optimiste)
+    if (msg.sender_id === S.me.id) return;
+    if (S.messages[key].some(m => m.id === msg.id)) return;
+    S.messages[key].push({
+      id: msg.id,
+      content: msg.content,
+      time: new Date(msg.created_at).toLocaleTimeString('fr', {hour:'2-digit', minute:'2-digit'}),
+      reactions: [],
+      author: { name: msg.author.username, av: msg.author.avatar, color: msg.author.color || '#94a3b8' }
+    });
+    if (S.dmChannel === key) renderChat();
+    else {
+      const sender = (S.friends||[]).find(f=>f.id===key);
+      if (sender) showToast(`💬 ${sender.username}: ${msg.content.slice(0,50)}`);
+    }
+  });
+
+  socket.on('new_message', (msg) => {
+    const key = msg.channel_id;
+    if (!S.messages[key]) S.messages[key] = [];
+    // Ignorer nos propres messages (déjà affichés en optimiste)
+    if (msg.author.username === S.me.name) return;
+    if (S.messages[key].some(m => m.id === msg.id)) return;
+    S.messages[key].push({
+      id: msg.id,
+      content: msg.content,
+      time: new Date(msg.created_at).toLocaleTimeString('fr', {hour:'2-digit', minute:'2-digit'}),
+      reactions: [],
+      author: {
+        name: msg.author.username,
+        av: msg.author.avatar,
+        color: msg.author.color || '#94a3b8'
+      }
+    });
+    if (S.activeCh === key) renderChat();
+  });
+
+  socket.on('user_typing', (data) => {
+    const el = document.getElementById('typingHint');
+    if (!el) return;
+    el.textContent = `${data.username} est en train d'écrire…`;
+    clearTimeout(socket._typingTimer);
+    socket._typingTimer = setTimeout(() => {
+      const e = document.getElementById('typingHint');
+      if (e) e.textContent = '';
+    }, 3000);
+  });
+}
+
+function logout() {
+  if (socket) socket.disconnect();
+  localStorage.removeItem('likoo_token');
+  localStorage.removeItem('likoo_user');
+  window.location.href = '/auth.html';
+}
+
+// ═══════════════════════════════════════════════
+// AMIS
+// ═══════════════════════════════════════════════
+async function loadFriends() {
+  const token = localStorage.getItem('likoo_token');
+  try {
+    const [frRes, reqRes] = await Promise.all([
+      fetch('http://localhost:5000/api/friends', { headers: { 'Authorization': 'Bearer ' + token } }),
+      fetch('http://localhost:5000/api/friends/requests', { headers: { 'Authorization': 'Bearer ' + token } })
+    ]);
+    S.friends = await frRes.json();
+    const pending = await reqRes.json();
+    S.pendingRequests = pending.length;
+    S._pendingList = pending;
+    renderNav();
+    if (S.view === 'dm') renderChannels();
+  } catch(e) { console.error('loadFriends:', e); }
+}
+
+async function sendFriendRequest() {
+  const username = q('#friendUsername')?.value.trim();
+  const tag = q('#friendTag')?.value.trim().replace('#','');
+  const errEl = q('#friendRequestError');
+  const okEl = q('#friendRequestSuccess');
+  errEl.style.display='none'; okEl.style.display='none';
+  if (!username || !tag) { errEl.textContent='Remplis les deux champs.'; errEl.style.display='block'; return; }
+  const token = localStorage.getItem('likoo_token');
+  try {
+    const r = await fetch('http://localhost:5000/api/friends/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ username, tag })
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Erreur'; errEl.style.display='block'; return; }
+    okEl.textContent = `Demande envoyée à ${username}#${tag} !`;
+    okEl.style.display='block';
+    q('#friendUsername').value=''; q('#friendTag').value='';
+  } catch(e) { errEl.textContent='Erreur réseau'; errEl.style.display='block'; }
+}
+
+function openFriendRequests() {
+  const list = S._pendingList || [];
+  const el = q('#friendRequestsList');
+  if (!el) return;
+  if (list.length === 0) {
+    el.innerHTML = '<div style="color:var(--text4);font-size:13px">Aucune demande en attente</div>';
+  } else {
+    el.innerHTML = list.map(fr => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg3);border-radius:8px">
+        <div style="font-size:22px">${fr.sender.avatar||'👤'}</div>
+        <div style="flex:1">
+          <div style="font-weight:600">${fr.sender.username}<span style="color:var(--text4);font-size:11px">#${fr.sender.tag}</span></div>
+          <div style="font-size:11px;color:var(--text4)">Demande d'ami</div>
+        </div>
+        <button class="btn btn-primary" style="padding:5px 10px;font-size:12px" onclick="acceptFriend('${fr.id}')">✓</button>
+        <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;color:#f87171" onclick="rejectFriend('${fr.id}')">✗</button>
+      </div>`).join('');
+  }
+  openModal('modalFriendRequests');
+}
+
+async function acceptFriend(requestId) {
+  const token = localStorage.getItem('likoo_token');
+  await fetch(`http://localhost:5000/api/friends/requests/${requestId}/accept`, {
+    method: 'POST', headers: { 'Authorization': 'Bearer ' + token }
+  });
+  await loadFriends();
+  openFriendRequests();
+}
+
+async function rejectFriend(requestId) {
+  const token = localStorage.getItem('likoo_token');
+  await fetch(`http://localhost:5000/api/friends/requests/${requestId}/reject`, {
+    method: 'POST', headers: { 'Authorization': 'Bearer ' + token }
+  });
+  await loadFriends();
+  openFriendRequests();
+}
+
 function updateNavAv(){
   const el=q('#navAv'); if(!el||!S.me)return;
   const avHtml = formatAvatar(S.me.av);
@@ -576,6 +878,7 @@ function renderUserDock(){
     <div class="dock-btns">
       <button class="dock-btn" onclick="toggleBtn(this)" title="Micro">🎙</button>
       <button class="dock-btn" onclick="toggleBtn(this)" title="Casque">🎧</button>
+      <button class="dock-btn" onclick="logout()" title="Se déconnecter" style="color:#f87171">⏻</button>
     </div>`;
 }
 
@@ -584,7 +887,8 @@ function renderUserDock(){
 // ═══════════════════════════════════════════════
 function renderNav(){
   const el=q('#navServers'); if(!el)return;
-  let h=`<div class="nav-server ${S.view==='dm'?'active':''}" onclick="showDM()">💬 Messages privés</div>`;
+  const badge = S.pendingRequests>0 ? `<span style="background:#f87171;color:#fff;border-radius:999px;font-size:10px;padding:1px 5px;margin-left:4px">${S.pendingRequests}</span>` : '';
+  let h=`<div class="nav-server ${S.view==='dm'?'active':''}" onclick="showDM()">💬 Messages privés${badge}</div>`;
   h+=S.servers.map(s=>`
     <div class="nav-server ${S.activeSrv?.id===s.id&&S.view==='server'?'active':''}" onclick="selectServer('${s.id}')">
       ${s.emoji} ${s.name}${s.channels.some(c=>c.notif)?` <span class="srv-notif">●</span>`:''}
@@ -618,27 +922,62 @@ function selectServer(id){
 function selectChannel(id){
   const ch=S.activeSrv?.channels.find(c=>c.id===id); if(!ch)return;
   if(ch.type==='voice'){joinVoice(id);return;}
+  // Quitter l'ancien canal Socket.IO
+  if (S.activeCh && socket) socket.emit('leave_channel', { channel_id: S.activeCh });
   S.activeCh=id; ch.notif=0;
   q('#chatIcon').textContent=ch.type==='announce'?'📢':'#';
   q('#chatName').textContent=ch.name;
   q('#chatDesc').textContent=ch.desc||'';
   q('#msgInput').placeholder=`Message #${ch.name}…`;
-  if(!S.messages[id])S.messages[id]=[];
+  S.messages[id]=[];
   renderChannels(); renderChat();
+  // Rejoindre le nouveau canal Socket.IO
+  if (socket) socket.emit('join_channel', { channel_id: id });
+  // Charger l'historique depuis le backend
+  const token = localStorage.getItem('likoo_token');
+  fetch(`http://localhost:5000/api/channels/${id}/messages`, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  }).then(r => r.json()).then(msgs => {
+    // Récupérer les messages locaux (optimistes) déjà affichés
+    const localOnly = (S.messages[id] || []).filter(m => !m.id || typeof m.id === 'number');
+    const history = msgs.map(m => ({
+      id: m.id,
+      content: m.content,
+      time: new Date(m.created_at).toLocaleTimeString('fr', {hour:'2-digit', minute:'2-digit'}),
+      reactions: [],
+      author: { name: m.author.username, av: m.author.avatar, color: m.author.color || '#94a3b8' }
+    }));
+    // Fusionner : historique + messages locaux non encore confirmés
+    S.messages[id] = [...history, ...localOnly];
+    if (S.activeCh === id) renderChat();
+  }).catch(e => console.error('load messages error:', e));
 }
-function selectDM(id){
+async function selectDM(id){
   S.dmChannel=id; S.view='dm';
-  const u=DEMO_DMS.find(d=>d.id===id);
-  q('#chatIcon').textContent=u.av; q('#chatName').textContent=u.name;
+  const u=(S.friends||[]).find(f=>f.id===id);
+  if(!u) return;
+  q('#chatIcon').textContent=formatAvatar(u.avatar||'👤');
+  q('#chatName').textContent=u.username;
   q('#chatDesc').textContent=u.status==='online'?'🟢 En ligne':'⚫ Hors ligne';
-  q('#msgInput').placeholder=`Message à ${u.name}…`;
+  q('#msgInput').placeholder=`Message à ${u.username}…`;
   if(!S.messages[id])S.messages[id]=[];
   renderChannels(); renderChat();
-  if(S.messages[id].length===0){
-    setTimeout(()=>{
-      pushMsg(id,{author:u,content:['Salut ! 👋','Hey !','Yo !'][rnd(0,2)]});
-    },900);
-  }
+  // Charger l'historique depuis le backend
+  const token=localStorage.getItem('likoo_token');
+  try{
+    const res=await fetch(`http://localhost:5000/api/dm/${id}`,{headers:{'Authorization':'Bearer '+token}});
+    const history=await res.json();
+    const mapped=history.map(m=>({
+      id:m.id,
+      content:m.content,
+      time:new Date(m.created_at).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'}),
+      reactions:[],
+      author:{name:m.author.username,av:m.author.avatar,color:m.author.color||'#94a3b8'}
+    }));
+    const localOnly=(S.messages[id]||[]).filter(m=>typeof m.id==='number');
+    S.messages[id]=[...mapped,...localOnly];
+    if(S.dmChannel===id)renderChat();
+  }catch(e){console.error('load dm error:',e);}
 }
 
 // ═══════════════════════════════════════════════
@@ -648,9 +987,15 @@ function renderChannels(){
   const el=q('#channelsList'); if(!el)return;
   if(S.view==='dm'||!S.activeSrv){
     q('#chModIcon').textContent='💬'; q('#chModTitle').textContent='Messages Privés';
-    el.innerHTML=`<div class="ch-section-lbl">Conversations</div>
-      ${DEMO_DMS.map(u=>`<div class="ch-item ${S.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">${formatAvatar(u.av)} ${u.name}</div>`).join('')}
-      <div style="padding:8px;margin-top:6px"><button class="btn btn-primary" style="width:100%;font-size:12px;padding:7px" onclick="alert('Ajoutez un ami par son tag !')">+ Ajouter un ami</button></div>`;
+    const reqBadge = S.pendingRequests>0 ? `<span style="background:#f87171;color:#fff;border-radius:999px;font-size:10px;padding:1px 5px;margin-left:4px">${S.pendingRequests}</span>` : '';
+    el.innerHTML=`
+      <div style="padding:8px;display:flex;gap:6px">
+        <button class="btn btn-primary" style="flex:1;font-size:12px;padding:7px" onclick="openModal('modalAddFriend')">+ Ajouter un ami</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:7px;position:relative" onclick="openFriendRequests()" title="Demandes reçues">👥${reqBadge}</button>
+      </div>
+      <div class="ch-section-lbl">Amis</div>
+      ${(S.friends||[]).length===0?'<div style="padding:8px 12px;font-size:12px;color:var(--text4)">Aucun ami pour l\'instant</div>':''}
+      ${(S.friends||[]).map(u=>`<div class="ch-item ${S.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">${formatAvatar(u.avatar||'👤')} ${u.username}</div>`).join('')}`;
     return;
   }
   const srv=S.activeSrv;
@@ -754,10 +1099,15 @@ function pushMsg(key,data){
 function sendMsg(){
   const inp=q('#msgInput');const text=inp?.value.trim();const key=activeKey();
   if(!text||!key)return;
-  pushMsg(key,{author:{name:S.me.name,av:S.me.av,color:S.me.color},content:text});
   inp.value='';inp.style.height='';
-  if(Math.random()>.45&&S.view==='server')setTimeout(()=>simReply(key),900+rnd(0,1800));
-  if(S.view==='dm')setTimeout(()=>simDM(key),700+rnd(0,1200));
+  // Affichage immédiat (optimiste) dans tous les cas
+  pushMsg(key,{author:{name:S.me.name,av:S.me.av,color:S.me.color},content:text});
+  // Envoi au backend si socket + id dispo (persistence + broadcast aux autres)
+  if(S.view==='server' && socket && S.me.id){
+    socket.emit('send_message',{channel_id:key,content:text,user_id:S.me.id});
+  } else if(S.view==='dm' && socket && S.me.id){
+    socket.emit('send_dm',{sender_id:S.me.id,receiver_id:S.dmChannel,content:text});
+  }
 }
 function simReply(key){
   const online=DEMO_MEMBERS.filter(m=>m.status==='online');
@@ -773,10 +1123,8 @@ function simDM(key){
 }
 let typT;
 function simTyping(){
-  if(Math.random()>.65&&S.view==='server'){
-    const m=DEMO_MEMBERS.filter(m=>m.status==='online')[rnd(0,1)];
-    const el=q('#typingHint');if(el)el.textContent=`${m.name} est en train d'écrire…`;
-    clearTimeout(typT);typT=setTimeout(()=>{const e=q('#typingHint');if(e)e.textContent='';},2000);
+  if(S.view==='server' && S.activeCh && socket){
+    socket.emit('typing',{channel_id:S.activeCh,username:S.me.name});
   }
 }
 function toggleReact(key,id,e){
@@ -875,24 +1223,46 @@ function renderVoiceControls(){
 // ═══════════════════════════════════════════════
 // SERVERS / CHANNELS MANAGEMENT
 // ═══════════════════════════════════════════════
-function createServer(){
+async function createServer(){
   const name=q('#srvName')?.value.trim();if(!name)return;
   const emoji=q('#srvEmoji')?.value.trim()||'🌐';
-  const id='srv_'+Date.now();
-  S.servers.push({id,name,emoji,
-    channels:[{id:id+'_g',name:'général',type:'text',desc:'Principal'},{id:id+'_v',name:'Vocal',type:'voice'}],
-    members:[DEMO_MEMBERS[rnd(0,3)]]});
-  S.messages[id+'_g']=[{id:Date.now(),system:true,content:`${S.me.name} a créé "${name}" 🎉`,time:now(),reactions:[]}];
-  q('#srvName').value='';q('#srvEmoji').value='';
-  closeModal('modalCreateServer');selectServer(id);
+  const token=localStorage.getItem('likoo_token');
+  try{
+    const r=await fetch('http://localhost:5000/api/servers',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({name,icon:emoji})
+    });
+    if(!r.ok)throw new Error('failed');
+    const srv=await r.json();
+    const newSrv={
+      id:srv.id,name:srv.name,emoji:srv.icon||emoji,
+      channels:(srv.channels||[]).map(ch=>({id:ch.id,name:ch.name,type:ch.type||'text',desc:ch.description||'',notif:0})),
+      members:[]
+    };
+    S.servers.push(newSrv);
+    q('#srvName').value='';q('#srvEmoji').value='';
+    closeModal('modalCreateServer');renderNav();selectServer(newSrv.id);
+  }catch(e){console.error('createServer:',e);alert('Erreur lors de la création du serveur.');}
 }
 let newChType='text';
 function selChType(el){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));el.classList.add('sel');newChType=el.dataset.type;}
-function createChannel(){
+async function createChannel(){
   if(!S.activeSrv)return;
   const name=q('#newChName')?.value.trim().toLowerCase().replace(/\s+/g,'-')||'nouveau';
-  S.activeSrv.channels.push({id:S.activeSrv.id+'_'+name+'_'+Date.now(),name,type:newChType,desc:''});
-  q('#newChName').value='';closeModal('modalCreateChannel');renderChannels();
+  const token=localStorage.getItem('likoo_token');
+  try{
+    const r=await fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}/channels`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({name,type:newChType})
+    });
+    if(r.status===403){alert('Seul le propriétaire du serveur peut créer des salons.');return;}
+    if(!r.ok)throw new Error('failed');
+    const ch=await r.json();
+    S.activeSrv.channels.push({id:ch.id,name:ch.name,type:ch.type,desc:ch.description||'',notif:0});
+    q('#newChName').value='';closeModal('modalCreateChannel');renderChannels();
+  }catch(e){console.error('createChannel:',e);alert('Erreur lors de la création du salon.');}
 }
 
 // ═══════════════════════════════════════════════
@@ -942,15 +1312,16 @@ function saveSettings(){
       S.me.av = selectedAvatar;
     }
     // persist changes to server if logged in
-    if(APP.me && APP.me.token){
-      fetch('/api/auth/me',{
+    const _settingsToken = localStorage.getItem('likoo_token');
+    if(_settingsToken){
+      fetch('http://localhost:5000/api/auth/me',{
         method:'PATCH',
         headers:{
           'Content-Type':'application/json',
-          'Authorization':'Bearer '+APP.me.token
+          'Authorization':'Bearer '+_settingsToken
         },
         body: JSON.stringify({ username: S.me.name, avatar: S.me.av })
-      });
+      }).catch(console.error);
     }
     save();
     const el=q('#dockName');if(el)el.textContent=n;

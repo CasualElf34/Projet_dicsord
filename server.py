@@ -15,7 +15,7 @@ import secrets
 import string
 import uuid
 
-from models import db, User, Server, Channel, Message
+from models import db, User, Server, Channel, Message, FriendRequest, DirectMessage
 
 # ═══════════════════════════════════════════════════
 # CONFIGURATION
@@ -223,8 +223,13 @@ def get_servers():
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     
-    servers = user.servers + user.owned_servers
-    return jsonify([srv.to_dict() for srv in servers]), 200
+    seen = set()
+    result = []
+    for srv in user.servers + user.owned_servers:
+        if srv.id not in seen:
+            seen.add(srv.id)
+            result.append(srv)
+    return jsonify([srv.to_dict() for srv in result]), 200
 
 @app.route('/api/servers', methods=['POST'])
 @jwt_required()
@@ -242,7 +247,20 @@ def create_server():
     
     db.session.add(server)
     db.session.commit()
-    
+
+    # Ajouter l'owner comme membre + créer un canal par défaut
+    user = User.query.get(user_id)
+    if user not in server.members:
+        server.members.append(user)
+    default_channel = Channel(
+        name='général',
+        server_id=server.id,
+        type='text',
+        description='Salon principal'
+    )
+    db.session.add(default_channel)
+    db.session.commit()
+
     return jsonify(server.to_dict()), 201
 
 @app.route('/api/servers/<server_id>', methods=['GET'])
@@ -316,6 +334,125 @@ def get_messages(channel_id):
     return jsonify([msg.to_dict() for msg in messages]), 200
 
 # ═══════════════════════════════════════════════════
+# AMIS - ROUTES
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/friends/request', methods=['POST'])
+@jwt_required()
+def send_friend_request():
+    """Envoie une demande d'ami par username#tag"""
+    user_id = get_jwt_identity()
+    data = request.json
+    username = data.get('username', '').strip()
+    tag = data.get('tag', '').strip()
+
+    if not username or not tag:
+        return jsonify({'error': 'Username et tag requis'}), 400
+
+    target = User.query.filter_by(username=username, tag=tag).first()
+    if not target:
+        return jsonify({'error': f'Utilisateur {username}#{tag} introuvable'}), 404
+    if target.id == user_id:
+        return jsonify({'error': 'Impossible de s\'ajouter soi-même'}), 400
+
+    # Vérifier si une demande existe déjà
+    existing = FriendRequest.query.filter(
+        ((FriendRequest.sender_id == user_id) & (FriendRequest.receiver_id == target.id)) |
+        ((FriendRequest.sender_id == target.id) & (FriendRequest.receiver_id == user_id))
+    ).first()
+    if existing:
+        if existing.status == 'accepted':
+            return jsonify({'error': 'Vous êtes déjà amis'}), 400
+        if existing.status == 'pending':
+            return jsonify({'error': 'Demande déjà envoyée'}), 400
+        # Si rejeté, on permet de réessayer
+        existing.status = 'pending'
+        existing.sender_id = user_id
+        existing.receiver_id = target.id
+        db.session.commit()
+        # Notifier via socket
+        socketio.emit('friend_request', existing.to_dict(), room=f'user_{target.id}')
+        return jsonify(existing.to_dict()), 200
+
+    fr = FriendRequest(sender_id=user_id, receiver_id=target.id)
+    db.session.add(fr)
+    db.session.commit()
+
+    # Notifier le destinataire en temps réel
+    socketio.emit('friend_request', fr.to_dict(), room=f'user_{target.id}')
+    return jsonify(fr.to_dict()), 201
+
+
+@app.route('/api/friends/requests', methods=['GET'])
+@jwt_required()
+def get_friend_requests():
+    """Récupère les demandes d'ami en attente reçues"""
+    user_id = get_jwt_identity()
+    requests_list = FriendRequest.query.filter_by(receiver_id=user_id, status='pending').all()
+    return jsonify([r.to_dict() for r in requests_list]), 200
+
+
+@app.route('/api/friends/requests/<request_id>/accept', methods=['POST'])
+@jwt_required()
+def accept_friend_request(request_id):
+    """Accepte une demande d'ami"""
+    user_id = get_jwt_identity()
+    fr = FriendRequest.query.get(request_id)
+    if not fr or fr.receiver_id != user_id:
+        return jsonify({'error': 'Demande introuvable'}), 404
+    fr.status = 'accepted'
+    db.session.commit()
+    # Notifier l'envoyeur
+    socketio.emit('friend_accepted', fr.to_dict(), room=f'user_{fr.sender_id}')
+    return jsonify(fr.to_dict()), 200
+
+
+@app.route('/api/friends/requests/<request_id>/reject', methods=['POST'])
+@jwt_required()
+def reject_friend_request(request_id):
+    """Rejette une demande d'ami"""
+    user_id = get_jwt_identity()
+    fr = FriendRequest.query.get(request_id)
+    if not fr or fr.receiver_id != user_id:
+        return jsonify({'error': 'Demande introuvable'}), 404
+    fr.status = 'rejected'
+    db.session.commit()
+    return jsonify({'message': 'Demande refusée'}), 200
+
+
+@app.route('/api/friends', methods=['GET'])
+@jwt_required()
+def get_friends():
+    """Récupère la liste d'amis"""
+    user_id = get_jwt_identity()
+    accepted = FriendRequest.query.filter(
+        ((FriendRequest.sender_id == user_id) | (FriendRequest.receiver_id == user_id)),
+        FriendRequest.status == 'accepted'
+    ).all()
+    friends = []
+    for fr in accepted:
+        friend = fr.receiver if fr.sender_id == user_id else fr.sender
+        friends.append(friend.to_dict())
+    return jsonify(friends), 200
+
+
+# ═══════════════════════════════════════════════════
+# MESSAGES PRIVÉS - ROUTES
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/dm/<friend_id>', methods=['GET'])
+@jwt_required()
+def get_dm_history(friend_id):
+    """Récupère l'historique des messages privés avec un ami"""
+    user_id = get_jwt_identity()
+    messages = DirectMessage.query.filter(
+        ((DirectMessage.sender_id == user_id) & (DirectMessage.receiver_id == friend_id)) |
+        ((DirectMessage.sender_id == friend_id) & (DirectMessage.receiver_id == user_id))
+    ).order_by(DirectMessage.created_at.asc()).all()
+    return jsonify([m.to_dict() for m in messages]), 200
+
+
+# ═══════════════════════════════════════════════════
 # WEBSOCKET - CHAT TEMPS RÉEL
 # ═══════════════════════════════════════════════════
 
@@ -324,6 +461,13 @@ def handle_connect():
     """Connexion WebSocket"""
     print(f"🔗 Client connecté: {request.sid}")
     emit('connect_response', {'message': 'Connecté au serveur'})
+
+@socketio.on('join_user_room')
+def handle_join_user_room(data):
+    """Rejoint la room personnelle pour recevoir les notifs (demandes d'ami, etc.)"""
+    user_id = data.get('user_id')
+    if user_id:
+        join_room(f'user_{user_id}')
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -380,6 +524,27 @@ def on_send_message(data):
     
     # Broadcast à tous les clients du canal
     emit('new_message', message.to_dict(), room=f'channel_{channel_id}')
+
+@socketio.on('send_dm')
+def on_send_dm(data):
+    """Envoie un message privé"""
+    sender_id = data.get('sender_id')
+    receiver_id = data.get('receiver_id')
+    content = data.get('content', '').strip()
+    if not sender_id or not receiver_id or not content:
+        return
+    sender = User.query.get(sender_id)
+    receiver = User.query.get(receiver_id)
+    if not sender or not receiver:
+        return
+    msg = DirectMessage(sender_id=sender_id, receiver_id=receiver_id, content=content)
+    db.session.add(msg)
+    db.session.commit()
+    # Envoyer au destinataire (s'il est connecté)
+    socketio.emit('new_dm', msg.to_dict(), room=f'user_{receiver_id}')
+    # Confirmer à l'envoyeur
+    socketio.emit('new_dm', msg.to_dict(), room=f'user_{sender_id}')
+
 
 @socketio.on('typing')
 def on_typing(data):

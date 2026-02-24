@@ -129,6 +129,52 @@ class Message(db.Model):
         }
 
 
+class DirectMessage(db.Model):
+    """Message privé entre deux utilisateurs"""
+    __tablename__ = 'direct_messages'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    sender_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    receiver_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    sender = db.relationship('User', foreign_keys=[sender_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'content': self.content,
+            'sender_id': self.sender_id,
+            'receiver_id': self.receiver_id,
+            'author': self.sender.to_dict(),
+            'created_at': self.created_at.isoformat()
+        }
+
+
+class FriendRequest(db.Model):
+    """Demande d'ami entre deux utilisateurs"""
+    __tablename__ = 'friend_requests'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    sender_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    receiver_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    status = db.Column(db.String(10), default='pending')  # pending, accepted, rejected
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    sender = db.relationship('User', foreign_keys=[sender_id], backref='sent_requests')
+    receiver = db.relationship('User', foreign_keys=[receiver_id], backref='received_requests')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'sender': self.sender.to_dict(),
+            'receiver': self.receiver.to_dict(),
+            'status': self.status,
+            'created_at': self.created_at.isoformat()
+        }
+
+
 # Association table pour les serveurs et membres
 server_members = db.Table('server_members',
     db.Column('user_id', db.String(36), db.ForeignKey('users.id'), primary_key=True),
