@@ -24,6 +24,78 @@ const COLORS = ['#8b5cf6','#ec4899','#14b8a6','#f59e0b','#3b82f6','#22c55e','#ef
 const AVATARS = ['🦊','👾','🐉','🌟','🦁','🐺','🦋','🐙','🎭','🦄','🐻','🐸','🦅','🐬','🦋'];
 const EMOJIS  = ['😀','😂','❤️','👍','🎉','🔥','✨','😎','🤔','😅','👀','💯','🚀','🎮','💜','😍','🤣','👋','💪','🦄','⚡','🌟','😭','🥺','🤯','😏','🤙','💀','🍕','🎵'];
 
+// helper to render avatar string (emoji or image URL)
+function formatAvatar(av){
+  if(!av) return '';
+  if(typeof av==='string' && (
+       av.startsWith('http') || av.startsWith('/') || av.startsWith('data:')
+     )){
+    return `<img src="${av}" class="avatar-img" alt="avatar">`;
+  }
+  return `<span style="font-size:15px">${av}</span>`;
+}
+
+// upload a new avatar file to the backend
+function uploadAvatar(input){
+  const file = input.files[0];
+  if(!file) return;
+  // temporary blob url for instant feedback
+  const blobUrl = URL.createObjectURL(file);
+  if(APP.me){
+    APP.me.av = blobUrl;
+    save();
+    updateNavAv();
+    renderUserDock();
+    renderServers();
+    renderChannels();
+    renderMembers();
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    document.getElementById('avatarPreview').innerHTML = `<img src="${dataUrl}" alt="avatar">`;
+    // immediately update app state so it survives navigation
+    if(APP.me){
+      APP.me.av = dataUrl;
+      save();
+      updateNavAv();
+      renderUserDock();
+      renderServers();
+      renderChannels();
+      renderMembers();
+      const mem = q('#members-list .mem-item:first-child img');
+      if(mem) mem.src = APP.me.av;
+    }
+    URL.revokeObjectURL(blobUrl);
+  };
+  reader.readAsDataURL(file);
+
+  // send to server if we have a token
+  if(APP.me && APP.me.token){
+    const form = new FormData();
+    form.append('avatar', file);
+    fetch('/api/auth/avatar', {
+      method:'POST',
+      body: form,
+      headers:{ 'Authorization': 'Bearer ' + APP.me.token }
+    }).then(r=>r.json()).then(data=>{
+      if(data.avatar){
+        APP.me.av = data.avatar;
+        save();
+        updateNavAv();
+        renderUserDock();
+        renderServers();
+        renderChannels();
+        renderMembers();
+        const mem = q('#members-list .mem-item:first-child img');
+        if(mem) mem.src = APP.me.av;
+      } else if(data.error){
+        alert('Erreur : '+data.error);
+      }
+    }).catch(err=>console.error('upload error',err));
+  }
+}
+
 const DEMO_MEMBERS = [
   { name:'Zara',  tag:'4521', av:'🦊', color:'#ec4899', status:'online',  role:'Admin' },
   { name:'Nino',  tag:'7788', av:'👾', color:'#3b82f6', status:'online',  role:'Membre' },
@@ -129,9 +201,10 @@ function renderUserDock() {
   // Desktop
   const dock = q('#user-dock');
   if (!dock) return;
+  const avHtml = formatAvatar(APP.me.av);
   dock.innerHTML = `
     <div class="user-dock-av" onclick="openModal('modal-settings')" style="background:${APP.me.color}22">
-      <span style="font-size:15px">${APP.me.av}</span>
+      ${avHtml}
       <div class="status-dot ${APP.me.status}" id="status-dot-main"></div>
     </div>
     <div class="user-dock-info">
@@ -183,7 +256,7 @@ function renderChannels() {
       <div class="ch-section-lbl">Conversations</div>
       ${DEMO_DMS.map(u => `
         <div class="ch-item ${APP.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">
-          <span class="ch-ico">${u.av}</span> ${u.name}
+          <span class="ch-ico">${formatAvatar(u.av)}</span> ${u.name}
         </div>
       `).join('')}
       <div style="padding:8px 10px;margin-top:6px">
@@ -243,7 +316,7 @@ function renderMemberGroup(label, list) {
   return `<div class="mem-section-lbl">${label}</div>
   ${list.map(m=>`<div class="mem-item">
     <div class="mem-av" style="background:${m.color}22">
-      <span>${m.av||m.avatar}</span>
+      ${formatAvatar(m.av||m.avatar)}
       <div class="mem-dot ${m.status}"></div>
     </div>
     <div><div class="mem-name">${m.name}</div><div class="mem-role">${m.role||''}</div></div>
@@ -309,8 +382,9 @@ function renderChat() {
       <div style="width:36px;text-align:center;font-size:10px;color:var(--text4);padding-top:3px;flex-shrink:0">${m.time}</div>
       <div class="msg-body">${body}<div class="react-row">${reacts}</div></div>${actions}
     </div>`;
+    const avatarHtml = formatAvatar(auth.av||auth.avatar);
     return `<div class="msg-wrap">
-      <div class="msg-avatar" style="background:${auth.color}22">${auth.av||auth.avatar}</div>
+      <div class="msg-avatar" style="background:${auth.color}22">${avatarHtml}</div>
       <div class="msg-body">
         <div class="msg-meta">
           <span class="msg-author" style="color:${auth.color}">${auth.name}</span>
@@ -558,13 +632,43 @@ function leaveVoice() { APP.inVoice = null; APP.activeCh = null; renderChannels(
 // ─────────────────────────────────────────────
 function openSettingsModal() {
   const el = q('#set-name'); if (el) el.value = APP.me.name;
+  // preview current avatar if present
+  const prev = q('#avatarPreview');
+  if(prev){
+    const av = APP.me.av;
+    // use formatAvatar helper which already handles data/blobs
+    prev.innerHTML = formatAvatar(av);
+  }
   openModal('modal-settings');
 }
 function saveSettings() {
-  const n = q('#set-name')?.value.trim() || APP.me.name;
-  APP.me.name = n; save();
-  const el = q('#my-display-name'); if (el) el.textContent = n;
+  // close modal first so user sees feedback immediately
   closeModal('modal-settings');
+  const n = q('#set-name')?.value.trim() || APP.me.name;
+  APP.me.name = n;
+  // avatar may have been updated already via uploadAvatar
+  // sync with backend if logged in
+  if (APP.me && APP.me.token) {
+    fetch('/api/auth/me', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + APP.me.token
+      },
+      body: JSON.stringify({ username: APP.me.name, avatar: APP.me.av })
+    }).then(r=>r.json()).then(d=>{
+      console.log('profile sync', d);
+    }).catch(console.error);
+  }
+  save();
+  const el = q('#my-display-name'); if (el) el.textContent = n;
+  // refresh UI across the app
+  renderUserDock();
+  renderServers();
+  renderChannels();
+  renderMembers();
+  const mem = q('#members-list .mem-item:first-child img');
+  if(mem) mem.src = APP.me.av;
 }
 function setStatus(s) {
   APP.me.status = s; save();
@@ -625,7 +729,7 @@ function renderMobileChannels() {
   if (!srv && APP.view !== 'dm') { el.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text4)">Sélectionnez un serveur</div>`; return; }
   if (APP.view === 'dm') {
     el.innerHTML = `<div class="ch-section-lbl">Messages Privés</div>
-      ${DEMO_DMS.map(u=>`<div class="ch-item ${APP.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">${u.av} ${u.name}</div>`).join('')}`;
+      ${DEMO_DMS.map(u=>`<div class="ch-item ${APP.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">${formatAvatar(u.av)} ${u.name}</div>`).join('')}`;
     return;
   }
   const texts  = srv.channels.filter(c=>c.type!=='voice');

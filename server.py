@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import secrets
 import string
+import uuid
 
 from models import db, User, Server, Channel, Message
 
@@ -70,8 +71,7 @@ def generate_tag():
 # ═══════════════════════════════════════════════════
 
 # (before_request already defined above)
-# @app.route('/api/auth/register', methods=['POST']) <-- duplicate removed
-
+@app.route('/api/auth/register', methods=['POST'])
 def register():
     """Crée un nouvel utilisateur"""
     data = request.json
@@ -88,10 +88,32 @@ def register():
         return jsonify({'error': 'Email déjà utilisé'}), 409
     
     # Crée l'utilisateur
+    avatar_val = data.get('avatar', '👤')
+    # if client sent a data URI for an image we should save it like upload_avatar
+    if isinstance(avatar_val, str) and avatar_val.startswith('data:'):
+        try:
+            header, b64 = avatar_val.split(',', 1)
+            import base64, re
+            m = re.match(r'data:(image/[^;]+);base64', header)
+            if m:
+                mime = m.group(1)
+                ext = mime.split('/')[-1]
+                if ext == 'jpeg':
+                    ext = 'jpg'
+                filename = f"{uuid.uuid4()}.{ext}"
+                avatars_dir = BASE_DIR / 'avatars'
+                avatars_dir.mkdir(exist_ok=True)
+                file_path = avatars_dir / filename
+                with open(file_path, 'wb') as f:
+                    f.write(base64.b64decode(b64))
+                avatar_val = f"/avatars/{filename}"
+        except Exception as ex:
+            # if anything goes wrong we just fall back to default
+            avatar_val = '👤'
     user = User(
         username=data['username'],
         email=data['email'],
-        avatar=data.get('avatar', '👤'),
+        avatar=avatar_val,
         tag=generate_tag()
     )
     user.set_password(data['password'])
@@ -143,6 +165,51 @@ def get_me():
     if not user:
         return jsonify({'error': 'Utilisateur non trouvé'}), 404
     
+    return jsonify(user.to_dict()), 200
+
+
+# ─────────────────────────────────────────────
+# AVATAR UPLOAD
+# ─────────────────────────────────────────────
+@app.route('/api/auth/avatar', methods=['POST'])
+@jwt_required()
+def upload_avatar():
+    """Permet à l'utilisateur connecté d'uploader une image/gif comme avatar."""
+    if 'avatar' not in request.files:
+        return jsonify({'error': "Aucun fichier envoyé"}), 400
+    file = request.files['avatar']
+    if file.filename == '':
+        return jsonify({'error': "Nom de fichier vide"}), 400
+    allowed = {'png','jpg','jpeg','gif','webp'}
+    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    if ext not in allowed:
+        return jsonify({'error': 'Type de fichier non supporté'}), 400
+    # sauvegarde dans un dossier avatars à la racine du projet
+    avatars_dir = BASE_DIR / 'avatars'
+    avatars_dir.mkdir(exist_ok=True)
+    filename = f"{uuid.uuid4()}.{ext}"
+    file_path = avatars_dir / filename
+    file.save(str(file_path))
+    user = User.query.get(get_jwt_identity())
+    # on stocke le chemin relatif qui sera servi par Flask (static_url_path='')
+    user.avatar = f"/avatars/{filename}"
+    db.session.commit()
+    return jsonify({'avatar': user.avatar}), 200
+
+
+# permet de modifier le profil (pseudo / avatar)
+@app.route('/api/auth/me', methods=['PATCH'])
+@jwt_required()
+def update_me():
+    user = User.query.get(get_jwt_identity())
+    if not user:
+        return jsonify({'error': 'Utilisateur non trouvé'}), 404
+    data = request.json or {}
+    if 'username' in data:
+        user.username = data['username']
+    if 'avatar' in data:
+        user.avatar = data['avatar']
+    db.session.commit()
     return jsonify(user.to_dict()), 200
 
 # ═══════════════════════════════════════════════════

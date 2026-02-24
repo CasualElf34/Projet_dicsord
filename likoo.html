@@ -177,6 +177,11 @@
     <!-- Profil -->
     <div class="settings-section">
       <h3>🙋 Mon profil</h3>
+      <div class="avatar-upload-row">
+        <!-- clicking the circle opens file picker -->
+        <div id="avatarPreview" class="avatar-preview" onclick="document.getElementById('avatarInput').click()"></div>
+        <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+      </div>
       <input type="text" id="setName" placeholder="Nom d'affichage">
       <div style="margin-bottom:10px">
         <div style="font-size:11px;font-weight:700;color:var(--text4);margin-bottom:7px">STATUT</div>
@@ -399,6 +404,83 @@ const COLORS  = ['#e8850a','#8b5cf6','#ec4899','#14b8a6','#3b82f6','#22c55e','#e
 const AVATARS = ['🦊','👾','🐉','🌟','🦁','🐺','🦋','🐙','🎭','🦄','🐻','🐸'];
 const EMOJIS  = ['😀','😂','❤️','👍','🎉','🔥','✨','😎','🤔','😅','👀','💯','🚀','🎮','💜','😍','🤣','👋','💪','🦄','⚡','🌟','😭','🥺','🤯','😏','🤙','💀','🍕','🎵'];
 
+// helper for avatar rendering
+function formatAvatar(av){
+  if(!av) return '';
+  if(typeof av==='string' && (
+      av.startsWith('http')||av.startsWith('/')||av.startsWith('data:')
+    )){
+    return `<img src="${av}" class="avatar-img" alt="avatar">`;
+  }
+  return `<span style="font-size:15px">${av}</span>`;
+}
+
+let selectedAvatar = '👤';
+let selectedAvatarFile = null;
+
+// upload avatar from settings
+function uploadAvatar(input){
+  const file = input.files[0];
+  if(!file) return;
+  selectedAvatarFile = file;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    const dataUrl = e.target.result;
+    document.getElementById('avatarPreview').innerHTML = `<img src="${dataUrl}">`;
+    selectedAvatar = dataUrl;
+    // update local state right away so it persists even before server responds
+    if(S.me){
+      S.me.av = dataUrl;
+      save();
+      updateNavAv();
+      renderUserDock();
+      renderServers();
+      renderMembers();
+      // ensure member list self avatar also updates
+      const mem = q('#membersList .mem-item:first-child img');
+      if(mem) mem.src = S.me.av;
+    }
+  };
+  reader.readAsDataURL(file);
+  // send to server immediately if logged in
+  if(S.me && S.me.token){
+    const form = new FormData();
+    form.append('avatar', file);
+    fetch('/api/auth/avatar',{
+      method:'POST',
+      body: form,
+      headers:{'Authorization':'Bearer '+S.me.token}
+    }).then(r=>r.json()).then(data=>{
+      if(data.avatar){
+        // backend returns path/url, update local state
+        S.me.av = data.avatar;
+        save();
+        updateNavAv();
+        renderUserDock();
+        renderServers();
+        renderMembers();
+        const mem = q('#membersList .mem-item:first-child img');
+        if(mem) mem.src = S.me.av;
+      } else if(data.error){
+        alert('Erreur : '+data.error);
+      }
+    }).catch(err=>console.error('upload error',err));
+  }
+}
+
+// handle file selection in static version
+function handleRegAvatar(input){
+  const file = input.files[0];
+  if(!file) return;
+  selectedAvatarFile = file;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    document.getElementById('avatarPreview').innerHTML = `<img src="${e.target.result}">`;
+    selectedAvatar = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 const DEMO_MEMBERS = [
   {name:'Zara', tag:'4521',av:'🦊',color:'#e74c3c',status:'online', role:'Admin'},
   {name:'Nino', tag:'7788',av:'👾',color:'#3b82f6',status:'online', role:'Membre'},
@@ -478,14 +560,16 @@ function setupAccount() {
 function save(){localStorage.setItem('likoo_me',JSON.stringify(S.me));}
 function updateNavAv(){
   const el=q('#navAv'); if(!el||!S.me)return;
-  el.innerHTML=`<span style="font-size:16px">${S.me.av}</span><div class="st-dot ${S.me.status}" id="navStatusDot"></div>`;
+  const avHtml = formatAvatar(S.me.av);
+  el.innerHTML=`${avHtml}<div class="st-dot ${S.me.status}" id="navStatusDot"></div>`;
   q('#navName').textContent=S.me.name;
 }
 function renderUserDock(){
   const el=q('#userDock'); if(!el||!S.me)return;
+  const avHtml = formatAvatar(S.me.av);
   el.innerHTML=`
     <div class="dock-av" style="background:${S.me.color}20" onclick="openSettings()">
-      <span style="font-size:15px">${S.me.av}</span>
+      ${avHtml}
       <div class="st-dot ${S.me.status}" id="dockDot"></div>
     </div>
     <div class="dock-info"><div class="dock-name" id="dockName">${S.me.name}</div><div class="dock-tag">#${S.me.tag}</div></div>
@@ -565,7 +649,7 @@ function renderChannels(){
   if(S.view==='dm'||!S.activeSrv){
     q('#chModIcon').textContent='💬'; q('#chModTitle').textContent='Messages Privés';
     el.innerHTML=`<div class="ch-section-lbl">Conversations</div>
-      ${DEMO_DMS.map(u=>`<div class="ch-item ${S.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">${u.av} ${u.name}</div>`).join('')}
+      ${DEMO_DMS.map(u=>`<div class="ch-item ${S.dmChannel===u.id?'active':''}" onclick="selectDM('${u.id}')">${formatAvatar(u.av)} ${u.name}</div>`).join('')}
       <div style="padding:8px;margin-top:6px"><button class="btn btn-primary" style="width:100%;font-size:12px;padding:7px" onclick="alert('Ajoutez un ami par son tag !')">+ Ajouter un ami</button></div>`;
     return;
   }
@@ -604,7 +688,7 @@ function renderMembers(){
 function mkMemGroup(label,list){
   return`<div class="mem-lbl">${label}</div>${list.map(m=>`
     <div class="mem-item">
-      <div class="mem-av" style="background:${m.color}18"><span>${m.av||m.avatar}</span><div class="mem-dot ${m.status}" style="border-color:var(--bg2)"></div></div>
+      <div class="mem-av" style="background:${m.color}18">${formatAvatar(m.av||m.avatar)}<div class="mem-dot ${m.status}" style="border-color:var(--bg2)"></div></div>
       <div><div class="mem-name">${m.name}</div><div class="mem-role">${m.role||''}</div></div>
     </div>`).join('')}`;
 }
@@ -648,7 +732,7 @@ function renderChat(){
       <div class="msg-body">${body}<div>${reacts}</div></div>${acts}
     </div>`;
     return`<div class="msg-group">
-      <div class="msg-av" style="background:${auth.color}18">${auth.av||auth.avatar}</div>
+      <div class="msg-av" style="background:${auth.color}18">${formatAvatar(auth.av||auth.avatar)}</div>
       <div class="msg-body">
         <div class="msg-meta"><span class="msg-author" style="color:${auth.color}">${auth.name}</span><span class="msg-time">${m.time}</span></div>
         ${body}<div>${reacts}</div>
@@ -827,15 +911,54 @@ function insEmoji(e){const i=q('#msgInput');if(i){i.value+=e;i.focus();}q('#emoj
 function openModal(id){q(`#${id}`)?.classList.add('open');}
 function closeModal(id){q(`#${id}`)?.classList.remove('open');}
 function openSettings(){
-  if(S.me)q('#setName').value=S.me.name;
+  if(S.me){
+    q('#setName').value=S.me.name;
+    selectedAvatar = S.me.av || S.me.avatar || '👤';
+    // show preview if image
+    const prev=q('#avatarPreview');
+    if(prev){
+      // treat http, /, data: and blob: URIs as images
+      if(selectedAvatar.startsWith('http') || selectedAvatar.startsWith('/') 
+         || selectedAvatar.startsWith('data:') || selectedAvatar.startsWith('blob:')){
+        prev.innerHTML=`<img src="${selectedAvatar}">`;
+      } else {
+        prev.innerHTML=`<span style="font-size:24px">${selectedAvatar}</span>`;
+      }
+    }
+  }
   openModal('modalSettings');
 }
+
 function saveSettings(){
+  // close modal as soon as user clicks save
+  closeModal('modalSettings');
   if(S.me){
     const n=q('#setName')?.value.trim()||S.me.name;
-    S.me.name=n;save();
+    S.me.name=n;
+    // if a new avatar was chosen but uploadAvatar onload hasn't run yet,
+    // make sure we still apply it (data/blob URL or final value)
+    if(selectedAvatar && (selectedAvatar.startsWith('http')||selectedAvatar.startsWith('/')
+        || selectedAvatar.startsWith('data:')||selectedAvatar.startsWith('blob:'))){
+      S.me.av = selectedAvatar;
+    }
+    // persist changes to server if logged in
+    if(APP.me && APP.me.token){
+      fetch('/api/auth/me',{
+        method:'PATCH',
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':'Bearer '+APP.me.token
+        },
+        body: JSON.stringify({ username: S.me.name, avatar: S.me.av })
+      });
+    }
+    save();
     const el=q('#dockName');if(el)el.textContent=n;
     q('#navName').textContent=n;
+    updateNavAv();
+    renderUserDock();
+    renderServers();
+    renderMembers();
   }
   localStorage.setItem('likoo_theme',S.theme);
   localStorage.setItem('likoo_layout',S.layout);

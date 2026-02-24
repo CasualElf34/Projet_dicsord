@@ -156,6 +156,39 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse at 15% 10%,rgba(255,255,255,.18) 0%,transparent 55%),
              radial-gradient(ellipse at 85% 85%,rgba(0,0,0,.04) 0%,transparent 50%);}
 
+/* avatar preview/upload styling */
+.avatar-preview{
+  width: 80px;
+  height: 80px;
+  border-radius:50%;
+  background:#f0f0f0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin-bottom:8px;
+  cursor:pointer; /* clickable circle */
+}
+.avatar-preview img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.avatar-upload-row{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+}
+.avatar-img{
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  object-fit:cover;
+}
+
+/* settings modal navigation and appearance presets */
+
+
 /* ══════════════════════════════════════
    CUSTOM TITLEBAR (Electron)
 ══════════════════════════════════════ */
@@ -351,6 +384,8 @@ body{display:flex;flex-direction:column;height:100vh;}
 .msg-group:hover{background:var(--bg2);}
 .msg-group:hover .msg-acts{opacity:1;pointer-events:all;}
 .msg-av{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+}
+.msg-avatar img, .msg-av img{width:100%;height:100%;border-radius:11px;object-fit:cover;
   font-size:17px;flex-shrink:0;cursor:pointer;transition:transform .15s;}
 .msg-av:hover{transform:scale(1.08);}
 .msg-body{flex:1;min-width:0;}

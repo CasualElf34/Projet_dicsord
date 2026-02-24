@@ -71,7 +71,7 @@ Puis ouvre http://localhost:5000
    - Pseudo (unique)
    - Email
    - Mot de passe (min 6 caractères)
-   - Choisis ton avatar (emoji)
+   - Choisis ton avatar (emoji ou upload d'une image/gif)
 3. **C'est fait!** Tu accèdes à l'app Likoo
 
 ---

@@ -267,6 +267,10 @@
   <div class="modal">
     <h2>Mon profil</h2>
     <p class="sub">Modifiez vos informations et préférences.</p>
+    <div class="avatar-upload-row">
+      <div id="avatarPreview" class="avatar-preview" onclick="document.getElementById('avatarInput').click()"></div>
+      <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+    </div>
     <input type="text" id="set-name" placeholder="Nom d'affichage">
 
     <div style="margin-bottom:10px">

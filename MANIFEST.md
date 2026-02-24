@@ -89,7 +89,7 @@ Flask-JWT-Extended==4.4.4
 
 **`auth.html`** — Page de login/register
 - Design moderne avec gradients
-- Sélecteur d'avatar (16 emojis)
+- Sélecteur d'avatar (16 emojis) + possibilité d'uploader une image/gif
 - Validation côté client
 - Messages d'erreur/succès
 - Responsive design

@@ -22,7 +22,8 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    avatar = db.Column(db.String(10), default='👤')
+    # avatar can be an emoji or a URL/relative path to an uploaded image/gif
+    avatar = db.Column(db.String(255), default='👤')
     color = db.Column(db.String(7), default='#94a3b8')
     status = db.Column(db.String(20), default='offline')  # online, away, dnd, offline
     tag = db.Column(db.String(4), unique=True)

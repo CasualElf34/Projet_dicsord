@@ -10,7 +10,7 @@ Une application web moderne et stylisée inspirée de Discord avec une interface
 - 📱 Interface responsive (desktop/mobile)
 - 🎨 Thème dark mode avec gradients
 - 🔊 Support pour les canaux vocaux
-- 🎭 Avatars et statuts utilisateur
+- 🎭 Avatars personnalisables (emoji, photo ou GIF) et statuts utilisateur
 
 ## 🛠️ Installation
 
@@ -93,9 +93,11 @@ Le serveur Flask expose une API REST:
 
 1. **Démarrer l'app** via `launch_likoo.bat` (Windows) ou `launch_likoo.sh` (Mac/Linux)
 2. Le navigateur s'ouvre automatiquement
-3. Interagir avec les panneaux flottants
-4. Écrire des messages dans les canaux
-5. Presser CTRL+C dans le terminal pour quitter
+3. Cliquez sur votre profil (ou ouvrez les paramètres) pour modifier votre avatar : vous pouvez choisir un emoji ou téléverser une photo/GIF.
+   Vous trouverez maintenant deux onglets dans la fenêtre de paramètres : **Mon compte** (avatar, nom, statut) et **Apparence** qui permet de choisir un fond/bannière couleur prédéfinie ou une couleur personnalisée.
+4. Interagir avec les panneaux flottants
+5. Écrire des messages dans les canaux
+6. Presser CTRL+C dans le terminal pour quitter
 
 ## 🚀 Prochaines étapes
 
