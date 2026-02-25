@@ -160,6 +160,7 @@ class ServerMember(db.Model):
             'user_id': self.user_id,
             'username': self.user.username,
             'avatar': self.user.avatar,
+            'status': self.user.status,
             'role_id': self.role_id,
             'joined_at': self.joined_at.isoformat()
         }

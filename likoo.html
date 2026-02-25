@@ -69,7 +69,6 @@
       </div>
       <div class="search-bar"><span>🔍</span><input type="text" placeholder="Rechercher…"></div>
       <div class="channels-scroll" id="channelsList"></div>
-      <div class="user-dock" id="userDock"></div>
     </div>
   </div>
 
@@ -275,14 +274,14 @@
         <!-- TAB: MEMBERS -->
         <div id="tabMembers" class="settings-tab-content" style="display:none">
           <h3 style="font-size:22px;font-weight:900;margin:0 0 28px 0">Membres du serveur</h3>
-          <div id="membersList" style="display:flex;flex-direction:column;gap:12px"></div>
+          <div id="settingsMembers" style="display:flex;flex-direction:column;gap:12px"></div>
         </div>
         
         <!-- TAB: CHANNELS -->
         <div id="tabChannels" class="settings-tab-content" style="display:none">
           <h3 style="font-size:22px;font-weight:900;margin:0 0 24px 0">Salons</h3>
           <button class="btn btn-primary" onclick="openModal('modalCreateChannel')" style="margin-bottom:28px;font-size:15px">+ Nouveau salon</button>
-          <div id="channelsList" style="display:flex;flex-direction:column;gap:0;padding:8px 0"></div>
+          <div id="settingsChannels" style="display:flex;flex-direction:column;gap:0;padding:8px 0"></div>
         </div>
         
         <!-- TAB: DELETE -->
@@ -562,13 +561,20 @@ const EMOJIS  = ['😀','😂','❤️','👍','🎉','🔥','✨','😎','🤔'
 
 // helper for avatar rendering
 function formatAvatar(av){
-  if(!av) return '';
+  if(!av) {
+    console.warn('⚠️ Avatar vide:', av);
+    return '<span style="font-size:15px">👤</span>';
+  }
   if(typeof av==='string' && (
       av.startsWith('http')||av.startsWith('/')||av.startsWith('data:')
     )){
-    return `<img src="${av}" class="avatar-img" alt="avatar">`;
+    return `<img src="${av}" class="avatar-img" alt="avatar" onerror="this.outerHTML='<span style=\\'font-size:15px\\'>👤</span>'">`;
   }
-  return `<span style="font-size:15px">${av}</span>`;
+  if(typeof av === 'string') {
+    return `<span style="font-size:15px">${av}</span>`;
+  }
+  console.error('❌ Avatar invalide (type:', typeof av, '):', av);
+  return '<span style="font-size:15px">👤</span>';
 }
 
 let selectedAvatar = '👤';
@@ -589,7 +595,6 @@ function uploadAvatar(input){
       S.me.av = dataUrl;
       save();
       updateNavAv();
-      renderUserDock();
       renderServers();
       renderMembers();
       // ensure member list self avatar also updates
@@ -613,7 +618,6 @@ function uploadAvatar(input){
         S.me.av = data.avatar;
         save();
         updateNavAv();
-        renderUserDock();
         renderServers();
         renderMembers();
         const mem = q('#membersList .mem-item:first-child img');
@@ -711,7 +715,6 @@ window.onload = function() {
 };
 
 function startApp() {
-  renderUserDock();
   updateNavAv();
   initSocket();
   loadServers();
@@ -764,7 +767,13 @@ async function loadServers() {
         desc: ch.description || '',
         notif: 0
       })),
-      members: [],
+      members: (srv.members || []).map(m => ({
+        user_id: m.user_id,
+        name: m.username,
+        avatar: m.avatar,
+        role: 'Membre',
+        status: m.status || 'online'
+      })),
       roles: srv.roles || []
     }));
     renderNav();
@@ -835,9 +844,15 @@ function initSocket() {
   socket = io('http://localhost:5000');
 
   socket.on('connect', () => {
+    console.log('✅ Socket connecté');
     if (S.activeCh) socket.emit('join_channel', { channel_id: S.activeCh });
     // Rejoindre la room personnelle pour les notifs (demandes d'ami, etc.)
-    if (S.me?.id) socket.emit('join_user_room', { user_id: S.me.id });
+    if (S.me?.id) {
+      socket.emit('join_user_room', { user_id: S.me.id });
+      console.log('✅ Rejoint room: user_' + S.me.id);
+    } else {
+      console.warn('⚠️ S.me.id non défini lors de la connexion socket');
+    }
   });
 
   socket.on('friend_request', (fr) => {
@@ -858,6 +873,11 @@ function initSocket() {
   });
 
   socket.on('new_dm', (msg) => {
+    console.log('📨 new_dm reçu:', msg);
+    if (!msg?.author) {
+      console.error('❌ new_dm: author manquant', msg);
+      return;
+    }
     const key = msg.sender_id === S.me.id ? msg.receiver_id : msg.sender_id;
     if (!S.messages[key]) S.messages[key] = [];
     // Ignorer nos propres messages (déjà affichés en optimiste)
@@ -870,6 +890,7 @@ function initSocket() {
       reactions: [],
       author: { name: msg.author.username, av: msg.author.avatar, color: msg.author.color || '#94a3b8' }
     });
+    console.log('✅ DM ajouté à la conversation avec clé:', key);
     if (S.dmChannel === key) renderChat();
     else {
       const sender = (S.friends||[]).find(f=>f.id===key);
@@ -906,6 +927,107 @@ function initSocket() {
       const e = document.getElementById('typingHint');
       if (e) e.textContent = '';
     }, 3000);
+  });
+
+  socket.on('server_icon_updated', (data) => {
+    const srv = S.servers.find(s => s.id === data.server_id);
+    if (srv) {
+      srv.icon_image = data.icon_image;
+      renderNav();
+      if (S.activeSrv && S.activeSrv.id === data.server_id) {
+        S.activeSrv.icon_image = data.icon_image;
+        updateServerIconPreview();
+      }
+    }
+  });
+
+  socket.on('user_avatar_updated', (data) => {
+    // Mettre à jour l'avatar de l'utilisateur dans la liste des membres
+    if (S.activeSrv) {
+      const member = S.activeSrv.members.find(m => m.user_id === data.user_id);
+      if (member) {
+        member.avatar = data.avatar;
+        renderMembers();
+      }
+    }
+  });
+
+  // ═══════════════════════════════════════════════
+  // WEBRTC LISTENERS
+  // ═══════════════════════════════════════════════
+  socket.on('voice_user_joined', (data) => {
+    console.log(`👤 ${data.user_id} a rejoint le canal vocal`);
+    if (S.inVoice && data.channel_id === S.activeCh) {
+      WebRTC.addPeer(data.user_id);
+    }
+  });
+
+  socket.on('voice_user_left', (data) => {
+    console.log(`👤 ${data.user_id} a quitté le canal vocal`);
+    WebRTC.removePeer(data.user_id);
+  });
+
+  socket.on('webrtc_offer', async (data) => {
+    console.log(`📤 Offre reçue de ${data.from}`);
+    await WebRTC.handleOffer(data.from, data.offer);
+  });
+
+  socket.on('webrtc_answer', async (data) => {
+    console.log(`📥 Réponse reçue de ${data.from}`);
+    await WebRTC.handleAnswer(data.from, data.answer);
+  });
+
+  socket.on('webrtc_ice_candidate', async (data) => {
+    await WebRTC.handleIceCandidate(data.from, data.candidate);
+  });
+
+  socket.on('voice_mute_changed', (data) => {
+    // Recevoir le changement de mute d'un autre utilisateur
+    if (S.inVoice && data.channel_id === S.activeCh) {
+      const member = S.inVoice.members.find(m => m.user_id === data.user_id);
+      if (member) {
+        member.muted = data.muted;
+        renderVoiceControls();
+      }
+    }
+  });
+
+  socket.on('voice_deafen_changed', (data) => {
+    // Recevoir le changement de deafen d'un autre utilisateur
+    if (S.inVoice && data.channel_id === S.activeCh) {
+      const member = S.inVoice.members.find(m => m.user_id === data.user_id);
+      if (member) {
+        member.deafened = data.deafened;
+        renderVoiceControls();
+      }
+    }
+  });
+
+  socket.on('voice_streaming_started', (data) => {
+    console.log(`🎬 ${data.name} commence à partager son écran`);
+    if (S.inVoice && data.channel_id === S.activeCh) {
+      const member = S.inVoice.members.find(m => m.user_id === data.user_id);
+      if (member) {
+        member.streaming = true;
+        renderVoiceControls();
+      }
+    }
+  });
+
+  socket.on('voice_streaming_stopped', (data) => {
+    console.log(`⛔ ${data.name} arrête le partage d'écran`);
+    if (S.inVoice && data.channel_id === S.activeCh) {
+      const member = S.inVoice.members.find(m => m.user_id === data.user_id);
+      if (member) {
+        member.streaming = false;
+        renderVoiceControls();
+        // Arrêter d'afficher le stream
+        const remoteStream = q('#remoteStream');
+        if (remoteStream) {
+          remoteStream.srcObject = null;
+        }
+      }
+    }
   });
 }
 
@@ -1000,22 +1122,8 @@ function updateNavAv(){
   const el=q('#navAv'); if(!el||!S.me)return;
   const avHtml = formatAvatar(S.me.av);
   el.innerHTML=`${avHtml}<div class="st-dot ${S.me.status}" id="navStatusDot"></div>`;
-  q('#navName').textContent=S.me.name;
-}
-function renderUserDock(){
-  const el=q('#userDock'); if(!el||!S.me)return;
-  const avHtml = formatAvatar(S.me.av);
-  el.innerHTML=`
-    <div class="dock-av" style="background:${S.me.color}20" onclick="openSettings()">
-      ${avHtml}
-      <div class="st-dot ${S.me.status}" id="dockDot"></div>
-    </div>
-    <div class="dock-info"><div class="dock-name" id="dockName">${S.me.name}</div><div class="dock-tag">#${S.me.tag}</div></div>
-    <div class="dock-btns">
-      <button class="dock-btn" onclick="toggleBtn(this)" title="Micro">🎙</button>
-      <button class="dock-btn" onclick="toggleBtn(this)" title="Casque">🎧</button>
-      <button class="dock-btn" onclick="logout()" title="Se déconnecter" style="color:#f87171">⏻</button>
-    </div>`;
+  const navNameEl = q('#navName');
+  navNameEl.innerHTML = `<div>${S.me.name}</div><div style="font-size:11px;opacity:0.7">#${S.me.tag}</div>`;
 }
 
 // ═══════════════════════════════════════════════
@@ -1053,6 +1161,8 @@ function showDM(){
 }
 function selectServer(id){
   S.view='server'; S.activeSrv=S.servers.find(s=>s.id===id); S.dmChannel=null;
+  // Rejoindre la room du serveur pour les mises à jour (icône, etc.)
+  if (socket) socket.emit('join_server', { server_id: id });
   renderNav(); renderChannels(); renderMembers(); updateSettingsButtonVisibility();
   const first=S.activeSrv.channels.find(c=>c.type!=='voice');
   if(first) selectChannel(first.id); else renderChat();
@@ -1101,7 +1211,7 @@ async function selectDM(id){
   S.dmChannel=id; S.view='dm';
   const u=(S.friends||[]).find(f=>f.id===id);
   if(!u) return;
-  q('#chatIcon').textContent=formatAvatar(u.avatar||'👤');
+  q('#chatIcon').innerHTML=formatAvatar(u.avatar||'👤');
   q('#chatName').textContent=u.username;
   q('#chatDesc').textContent=u.status==='online'?'🟢 En ligne':'⚫ Hors ligne';
   q('#msgInput').placeholder=`Message à ${u.username}…`;
@@ -1175,10 +1285,10 @@ function renderMembers(){
     {l:'Modérateur',m:srv.members.filter(m=>m.role==='Modérateur'&&m.status!=='offline')},
     {l:'En ligne',m:srv.members.filter(m=>m.role==='Membre'&&m.status==='online')},
     {l:'Absent',m:srv.members.filter(m=>m.status==='away'&&m.role==='Membre')},
+    {l:'Ne pas déranger',m:srv.members.filter(m=>m.status==='dnd'&&m.role==='Membre')},
     {l:'Hors ligne',m:srv.members.filter(m=>m.status==='offline')},
   ].filter(g=>g.m.length);
-  const self=[{name:S.me.name,av:S.me.av,color:S.me.color,status:S.me.status,role:'Membre'}];
-  let h=mkMemGroup('Toi',self);
+  let h='';
   grps.forEach(g=>h+=mkMemGroup(`${g.l} — ${g.m.length}`,g.m));
   el.innerHTML=h;
 }
@@ -1256,8 +1366,10 @@ function sendMsg(){
   pushMsg(key,{author:{name:S.me.name,av:S.me.av,color:S.me.color},content:text});
   // Envoi au backend si socket + id dispo (persistence + broadcast aux autres)
   if(S.view==='server' && socket && S.me.id){
+    console.log('📤 Envoi message au serveur:', {channel_id:key,user_id:S.me.id});
     socket.emit('send_message',{channel_id:key,content:text,user_id:S.me.id});
   } else if(S.view==='dm' && socket && S.me.id){
+    console.log('📤 Envoi DM:', {sender_id:S.me.id,receiver_id:S.dmChannel});
     socket.emit('send_dm',{sender_id:S.me.id,receiver_id:S.dmChannel,content:text});
   }
 }
@@ -1299,17 +1411,340 @@ function handleFile(inp){
 }
 
 // ═══════════════════════════════════════════════
+// WEBRTC MANAGER
+// ═══════════════════════════════════════════════
+const WebRTC = {
+  peers: {},           // { userId: RTCPeerConnection }
+  localStream: null,   // MediaStream du microphone
+  audioElements: {},   // { userId: HTMLAudioElement }
+  
+  async init() {
+    try {
+      console.log('🎤 Demande permission microphone...');
+      this.localStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: true, 
+          noiseSuppression: true,
+          autoGainControl: true 
+        } 
+      });
+      console.log('✅ Microphone activé');
+      return true;
+    } catch(e) {
+      console.error('❌ Erreur microphone:', e);
+      alert('Permission microphone refusée - audio non disponible');
+      return false;
+    }
+  },
+  
+  async addPeer(userId) {
+    if (this.peers[userId]) return; // Déjà connecté
+    
+    console.log(`➕ Création connexion peer avec ${userId}`);
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }]
+    });
+    
+    // Ajouter les tracks locaux
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        pc.addTrack(track, this.localStream);
+      });
+    }
+    
+    // Recevoir les tracks distants
+    pc.ontrack = (event) => {
+      console.log(`🎵 Track reçu de ${userId}`);
+      const videoTracks = event.streams[0].getVideoTracks();
+      if (videoTracks.length > 0) {
+        // C'est un stream vidéo (écran partagé)
+        const remoteVideo = q('#remoteStream');
+        if (remoteVideo) {
+          remoteVideo.srcObject = event.streams[0];
+          console.log('📺 Affichage du stream écran');
+        }
+      } else {
+        // C'est l'audio
+        this.playRemoteAudio(userId, event.streams[0]);
+      }
+    };
+    
+    // Gestion ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('webrtc_ice_candidate', {
+          target_user_id: userId,
+          sender_user_id: S.me.id,
+          channel_id: S.activeCh,
+          candidate: event.candidate
+        });
+      }
+    };
+    
+    // État connexion
+    pc.onconnectionstatechange = () => {
+      console.log(`🔗 État ${userId}: ${pc.connectionState}`);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        this.removePeer(userId);
+      }
+    };
+    
+    this.peers[userId] = pc;
+    
+    // Créer une offre
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    
+    socket.emit('webrtc_offer', {
+      target_user_id: userId,
+      sender_user_id: S.me.id,
+      channel_id: S.activeCh,
+      offer: offer
+    });
+  },
+  
+  async handleOffer(fromUserId, offer) {
+    let pc = this.peers[fromUserId];
+    if (!pc) {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }]
+      });
+      this.peers[fromUserId] = pc;
+      
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(track => {
+          pc.addTrack(track, this.localStream);
+        });
+      }
+      
+      pc.ontrack = (event) => {
+        console.log(`🎵 Track reçu de ${fromUserId}`);
+        const videoTracks = event.streams[0].getVideoTracks();
+        if (videoTracks.length > 0) {
+          // C'est un stream vidéo (écran partagé)
+          const remoteVideo = q('#remoteStream');
+          if (remoteVideo) {
+            remoteVideo.srcObject = event.streams[0];
+            console.log('📺 Affichage du stream écran');
+          }
+        } else {
+          // C'est l'audio
+          this.playRemoteAudio(fromUserId, event.streams[0]);
+        }
+      };
+      
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('webrtc_ice_candidate', {
+            target_user_id: fromUserId,
+            sender_user_id: S.me.id,
+            channel_id: S.activeCh,
+            candidate: event.candidate
+          });
+        }
+      };
+    }
+    
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    
+    socket.emit('webrtc_answer', {
+      target_user_id: fromUserId,
+      sender_user_id: S.me.id,
+      channel_id: S.activeCh,
+      answer: answer
+    });
+  },
+  
+  async handleAnswer(fromUserId, answer) {
+    const pc = this.peers[fromUserId];
+    if (pc && pc.signalingState === 'have-local-offer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    }
+  },
+  
+  async handleIceCandidate(fromUserId, candidate) {
+    const pc = this.peers[fromUserId];
+    if (pc) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch(e) {
+        console.warn('ICE error:', e);
+      }
+    }
+  },
+  
+  playRemoteAudio(userId, stream) {
+    if (this.audioElements[userId]) return;
+    
+    const audio = new Audio();
+    audio.srcObject = stream;
+    audio.autoplay = true;
+    audio.playsinline = true;
+    document.body.appendChild(audio); // Ajouter au DOM pour que ça joue
+    
+    this.audioElements[userId] = audio;
+    console.log(`🔊 Lecture audio ${userId}`);
+  },
+  
+  removePeer(userId) {
+    const pc = this.peers[userId];
+    if (pc) {
+      pc.close();
+      delete this.peers[userId];
+      console.log(`➖ Connexion ${userId} fermée`);
+    }
+    
+    const audio = this.audioElements[userId];
+    if (audio) {
+      audio.pause();
+      audio.srcObject = null;
+      audio.remove();
+      delete this.audioElements[userId];
+    }
+  },
+  
+  cleanup() {
+    Object.keys(this.peers).forEach(userId => this.removePeer(userId));
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream = null;
+    }
+  },
+  
+  screenStream: null,  // Pour le screen sharing
+  
+  async startScreenShare() {
+    try {
+      console.log('📺 Demande permission screen...');
+      this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: false
+      });
+      
+      console.log('✅ Screen partage activé');
+      
+      // Remplacer les video tracks de tous les peers avec le screen
+      const videoTrack = this.screenStream.getVideoTracks()[0];
+      
+      Object.values(this.peers).forEach(pc => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) {
+          sender.replaceTrack(videoTrack);
+        } else {
+          pc.addTrack(videoTrack, this.screenStream);
+        }
+      });
+      
+      // Arrêter le screen quand l'utilisateur arrête de partager
+      videoTrack.onended = () => {
+        console.log('📺 Screen partage arrêté');
+        this.stopScreenShare();
+      };
+      
+      // Notifier les autres qu'on partage
+      socket.emit('voice_streaming_started', {
+        channel_id: S.activeCh,
+        user_id: S.me.id,
+        name: S.me.name || 'Utilisateur'
+      });
+      
+      return true;
+    } catch(e) {
+      console.error('❌ Erreur screen share:', e);
+      if (e.name !== 'NotAllowedError') {
+        alert('Erreur lors du partage d\'écran');
+      }
+      return false;
+    }
+  },
+  
+  async stopScreenShare() {
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
+      
+      // Revenir au microphone
+      if (this.localStream) {
+        const audioTrack = this.localStream.getAudioTracks()[0];
+        Object.values(this.peers).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
+          if (sender && audioTrack) {
+            sender.replaceTrack(audioTrack);
+          }
+        });
+      }
+      
+      // Notifier les autres qu'on arrête de partager
+      socket.emit('voice_streaming_stopped', {
+        channel_id: S.activeCh,
+        user_id: S.me.id,
+        name: S.me.name || 'Utilisateur'
+      });
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════
 // VOICE
 // ═══════════════════════════════════════════════
 function joinVoice(id){
   const ch=S.activeSrv?.channels.find(c=>c.id===id);
-  S.inVoice={id,name:ch?.name||'Vocal',muted:false,deafened:false,streaming:false,members:[S.me,...DEMO_MEMBERS.slice(0,2)]};
+  // Charger les vrais membres du serveur pour le canal vocal
+  const voiceMembers = S.activeSrv?.members || [];
+  S.inVoice={
+    id,
+    name:ch?.name||'Vocal',
+    muted:false,
+    deafened:false,
+    streaming:false,
+    members: voiceMembers.map(m => ({
+      user_id: m.user_id,
+      name: m.name || m.username,
+      avatar: m.avatar,
+      color: m.color || '#94a3b8',
+      status: m.status || 'online',
+      role: m.role || 'Membre'
+    }))
+  };
   S.activeCh=id;
   renderChannels();
   renderVoiceControls();
   updateTitlebar('Vocal: '+S.inVoice.name);
+  
+  // Initialiser WebRTC
+  (async () => {
+    const success = await WebRTC.init();
+    if (success) {
+      // Notifier les autres utilisateurs et créer des connexions
+      socket.emit('voice_channel_join', {
+        user_id: S.me.id,
+        channel_id: id,
+        server_id: S.activeSrv.id
+      });
+      
+      // Se connecter à tous les autres utilisateurs du canal
+      voiceMembers.forEach(m => {
+        if (m.user_id !== S.me.id) {
+          setTimeout(() => WebRTC.addPeer(m.user_id), 500);
+        }
+      });
+    }
+  })();
 }
 function leaveVoice(){
+  // Nettoyer WebRTC
+  WebRTC.cleanup();
+  
+  // Notifier le serveur
+  if (S.inVoice) {
+    socket.emit('voice_channel_leave', {
+      user_id: S.me.id,
+      channel_id: S.inVoice.id
+    });
+  }
+  
   S.inVoice=null;S.activeCh=null;
   renderChannels();
   q('#voicePanel')?.remove();
@@ -1318,17 +1753,66 @@ function leaveVoice(){
 function toggleMute(){
   if(!S.inVoice)return;
   S.inVoice.muted=!S.inVoice.muted;
+  // Désactiver/Activer les tracks audio
+  if(WebRTC.localStream) {
+    WebRTC.localStream.getAudioTracks().forEach(track => {
+      track.enabled = !S.inVoice.muted;
+    });
+  }
+  // Notifier les autres utilisateurs du canal
+  if(socket && S.activeCh) {
+    socket.emit('voice_mute_changed', {
+      user_id: S.me.id,
+      channel_id: S.activeCh,
+      muted: S.inVoice.muted
+    });
+  }
   renderVoiceControls();
 }
 function toggleDeafen(){
   if(!S.inVoice)return;
   S.inVoice.deafened=!S.inVoice.deafened;
   if(S.inVoice.deafened)S.inVoice.muted=true;
+  // Mute aussi si deafened
+  if(WebRTC.localStream) {
+    WebRTC.localStream.getAudioTracks().forEach(track => {
+      track.enabled = !S.inVoice.muted;
+    });
+  }
+  // Désactiver l'audio des autres utilisateurs quand deafened
+  Object.values(WebRTC.audioElements).forEach(audio => {
+    audio.volume = S.inVoice.deafened ? 0 : 1;
+  });
+  // Notifier les autres utilisateurs du canal
+  if(socket && S.activeCh) {
+    socket.emit('voice_deafen_changed', {
+      user_id: S.me.id,
+      channel_id: S.activeCh,
+      deafened: S.inVoice.deafened
+    });
+  }
   renderVoiceControls();
 }
 function toggleStream(){
   if(!S.inVoice)return;
-  S.inVoice.streaming=!S.inVoice.streaming;
+  
+  if(S.inVoice.streaming) {
+    // Arrêter le screen sharing
+    WebRTC.stopScreenShare();
+    S.inVoice.streaming = false;
+    showToast('📺 Partage d\'écran arrêté');
+  } else {
+    // Démarrer le screen sharing
+    (async () => {
+      const success = await WebRTC.startScreenShare();
+      if(success) {
+        S.inVoice.streaming = true;
+        showToast('📺 Écran partagé avec le canal !');
+      }
+      renderVoiceControls();
+    })();
+  }
+  
   renderVoiceControls();
 }
 function renderVoiceControls(){
@@ -1343,31 +1827,101 @@ function renderVoiceControls(){
     panel.className='voice-panel';
     q('#messages')?.parentElement.insertBefore(panel,q('#messages'));
   }
-  const members=S.inVoice.members.map(m=>`
-    <div class="voice-member">
-      <div class="vmem-av" style="background:${m.color}20"><span>${m.av}</span></div>
-      <div class="vmem-info"><div class="vmem-name">${m.name}</div><div class="vmem-status">En vocal</div></div>
-      ${m.name===S.me.name?'<div style="font-size:11px;color:var(--text4);">C\'est toi</div>':''}
-    </div>`).join('');
-  panel.innerHTML=`
-    <div class="voice-header">
-      <div>🔊 ${S.inVoice.name} — ${S.inVoice.members.length} personne(s)</div>
-      <button class="voice-close" onclick="leaveVoice()">✕</button>
+  
+  // Trouver si quelqu'un stream
+  const streamer = S.inVoice.members.find(m => m.streaming);
+  const otherMembers = S.inVoice.members.filter(m => m.user_id !== S.me.id);
+  
+  const streamContent = streamer ? `
+    <div class="voice-stream-container">
+      <video id="remoteStream" autoplay playsinline style="width:100%;height:100%;object-fit:contain;background:#000"></video>
+      <div class="stream-badge">
+        <span>📺 ${streamer.name} partage son écran</span>
+      </div>
     </div>
-    <div class="voice-members">${members}</div>
-    <div class="voice-controls">
-      <button class="voice-btn ${S.inVoice.muted?'active':''}" onclick="toggleMute()" title="Micro">
-        <span class="voice-icon">🎙</span><span class="voice-label">Micro</span>
-      </button>
-      <button class="voice-btn ${S.inVoice.deafened?'active':''}" onclick="toggleDeafen()" title="Casque">
-        <span class="voice-icon">🎧</span><span class="voice-label">Casque</span>
-      </button>
-      <button class="voice-btn ${S.inVoice.streaming?'active':''}" onclick="toggleStream()" title="Stream">
-        <span class="voice-icon">📹</span><span class="voice-label">Stream</span>
-      </button>
-      <button class="voice-btn" style="background:var(--red);color:white" onclick="leaveVoice()" title="Quitter">
-        <span class="voice-icon">📞</span><span class="voice-label">Quitter</span>
-      </button>
+  ` : `
+    <div class="voice-no-stream">
+      <div style="font-size:48px;margin-bottom:20px">🎤</div>
+      <div style="font-size:16px;font-weight:600;color:var(--text)">Canal vocal actif</div>
+      <div style="font-size:13px;color:var(--text4);margin-top:8px">${S.inVoice.members.length} personne(s) connectée(s)</div>
+    </div>
+  `;
+  
+  // Afficher les vrais membres avec couleur et statut
+  const members=otherMembers.map(m=>{
+    const avatar = typeof m.avatar === 'string' ? m.avatar : '👤';
+    return `
+    <div class="voice-member-item">
+      <div class="vm-avatar" style="background:${m.color||'#94a3b8'}20;border:2px solid ${m.color||'#94a3b8'};">
+        <span>${avatar.charAt(0) === 'h' ? '📷' : avatar}</span>
+      </div>
+      <div class="vm-info">
+        <div class="vm-name">${m.name||'Unknown'}</div>
+        <div class="vm-status">
+          ${m.streaming?'📺 En stream':(m.muted?'🔇 Muet':'🎤 En vocal')}
+        </div>
+      </div>
+      <div class="vm-icon">${m.streaming?'📺':(m.muted?'🔇':'🎤')}</div>
+    </div>`;
+  }).join('');
+  
+  // Status de l'utilisateur courant
+  const statusIcon = S.inVoice.muted ? '🔇' : (S.inVoice.deafened ? '🔊' : '🎤');
+  const statusText = S.inVoice.muted ? 'Microphone coupé' : (S.inVoice.deafened ? 'Muet' : 'Microphone actif');
+  const statusColor = S.inVoice.muted ? '#ef4444' : '#10b981';
+  
+  panel.innerHTML=`
+    <div class="voice-main">
+      ${streamContent}
+      
+      <div class="voice-sidebar">
+        <div class="voice-sidebar-header">
+          <div>Participants</div>
+          <div style="font-size:12px;color:var(--text4)">${S.inVoice.members.length}</div>
+        </div>
+        
+        <div class="voice-members-list">
+          <div class="voice-member-item voice-self">
+            <div class="vm-avatar" style="background:var(--accent)30;border:2px solid var(--accent);">
+              <span>${S.me.avatar?.charAt(0) === 'h' ? '👤' : (S.me.avatar || '👤')}</span>
+            </div>
+            <div class="vm-info">
+              <div class="vm-name">${S.me.name||'Toi'}</div>
+              <div class="vm-status" style="color:${statusColor}">${statusText}</div>
+            </div>
+            <div class="vm-icon" style="color:${statusColor}">${statusIcon}</div>
+          </div>
+          
+          ${members}
+        </div>
+      </div>
+    </div>
+    
+    <div class="voice-footer">
+      <div class="voice-footer-left">
+        <div class="voice-info">
+          <span style="font-size:16px">🔊</span>
+          <div>
+            <div style="font-weight:600;font-size:13px">${S.inVoice.name}</div>
+            <div style="font-size:11px;color:var(--text4)">${S.inVoice.members.length} connecté(s)</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="voice-controls">
+        <button class="voice-btn ${S.inVoice.muted?'active':''}" onclick="toggleMute()" title="Micro">
+          <span>${S.inVoice.muted?'🔇':'🎙'}</span>
+        </button>
+        <button class="voice-btn ${S.inVoice.deafened?'active':''}" onclick="toggleDeafen()" title="Casque">
+          <span>${S.inVoice.deafened?'🔊':'🎧'}</span>
+        </button>
+        <button class="voice-btn ${S.inVoice.streaming?'active streaming':''}" onclick="toggleStream()" title="Partager écran" id="streamBtn">
+          <span>📹</span>
+        </button>
+        <button class="voice-btn leave" onclick="leaveVoice()" title="Quitter">
+          <span>📞</span>
+        </button>
+      </div>
     </div>
   `;
 }
@@ -1484,7 +2038,7 @@ function switchServerTab(tabName) {
 }
 
 function loadServerMembers() {
-  const list = q('#membersList');
+  const list = q('#settingsMembers');
   if (!list || !S.activeSrv) {
     console.warn('loadServerMembers: list ou activeSrv manquant');
     return;
@@ -1503,12 +2057,14 @@ function loadServerMembers() {
   
   let html = '';
   members.forEach(m => {
+    const avatarHtml = formatAvatar(m.avatar || m.av || '👤');
+    const joinDate = m.joined_at ? new Date(m.joined_at).toLocaleDateString('fr') : 'Date inconnue';
     html += `
       <div style="padding:12px 14px;background:var(--bg);border-radius:8px;display:flex;align-items:center;gap:12px;margin-bottom:8px;overflow:hidden;box-sizing:border-box">
-        <div style="width:40px;height:40px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${m.avatar || '👤'}</div>
+        <div style="width:44px;height:44px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden">${avatarHtml}</div>
         <div style="flex:1;min-width:0;overflow:hidden">
-          <div style="font-weight:600;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.username || 'Unknown'}</div>
-          <div style="font-size:12px;color:var(--text4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Rejoint le ${new Date(m.joined_at).toLocaleDateString('fr')}</div>
+          <div style="font-weight:600;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name || m.username || 'Unknown'}</div>
+          <div style="font-size:12px;color:var(--text4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Rejoint le ${joinDate}</div>
         </div>
       </div>
     `;
@@ -1517,7 +2073,7 @@ function loadServerMembers() {
 }
 
 function loadServerChannels() {
-  const list = q('#channelsList');
+  const list = q('#settingsChannels');
   if (!list || !S.activeSrv) {
     console.warn('loadServerChannels: list ou activeSrv manquant');
     return;
@@ -1957,10 +2513,8 @@ function saveSettings(){
       }).catch(console.error);
     }
     save();
-    const el=q('#dockName');if(el)el.textContent=n;
-    q('#navName').textContent=n;
     updateNavAv();
-    renderUserDock();
+    q('#navName').innerHTML = `<div>${S.me.name}</div><div style="font-size:11px;opacity:0.7">#${S.me.tag}</div>`;
     renderServers();
     renderMembers();
   }
@@ -1977,7 +2531,23 @@ function setStatus(el){
   el.classList.add('active');
   const s=el.dataset.status;if(!S.me)return;S.me.status=s;save();
   const colors={online:'var(--green)',away:'#f59e0b',dnd:'var(--red)',offline:'#7f8c8d'};
-  ['navStatusDot','dockDot'].forEach(id=>{const d=q('#'+id);if(d){d.className='st-dot '+s;d.style.background=colors[s];}});
+  ['navStatusDot'].forEach(id=>{const d=q('#'+id);if(d){d.className='st-dot '+s;d.style.background=colors[s];}});
+  // Mettre à jour le statut dans la liste des membres aussi
+  if(S.activeSrv && S.activeSrv.members){
+    S.activeSrv.members.forEach(m => {
+      if(m.user_id === S.me.id) m.status = s;
+    });
+    renderMembers();
+  }
+  // Sauvegarder le statut dans la base de données (asynchrone)
+  fetch('/api/auth/me', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('likoo_token')}`
+    },
+    body: JSON.stringify({status: s})
+  }).catch(err => console.error('Erreur sauvegarde statut:', err));
 }
 
 // ═══════════════════════════════════════════════
@@ -2010,6 +2580,8 @@ function applyThemeVal(t){
   r.setProperty('--border',th.border);r.setProperty('--border2',th.border2);
   r.setProperty('--shadow',th.shadow);r.setProperty('--red',th.red);r.setProperty('--green',th.green);
   r.setProperty('--zone-hl',th.hl);r.setProperty('--zone-border',th.hlb);
+  // Sauvegarder immédiatement le thème
+  localStorage.setItem('likoo_theme', t);
   // Update theme card active state
   document.querySelectorAll('.theme-card').forEach(c=>{c.classList.toggle('active',c.dataset.theme===t);});
 }
@@ -2062,6 +2634,9 @@ function applyLayoutVal(l){
   if(cfg.right&&cfg.showRight)moveToZone(cfg.right,zr);
 
   S.membersVisible=cfg.showRight;
+
+  // Sauvegarder immédiatement le layout
+  localStorage.setItem('likoo_layout', l);
 
   // Update layout card active
   document.querySelectorAll('.layout-card').forEach(c=>c.classList.toggle('active',c.dataset.layout===l));

@@ -3,20 +3,26 @@
  * Gère la fenêtre et le cycle de vie de l'app
  */
 
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+let app, BrowserWindow, Menu, ipcMain;
+try {
+  const electron = require('electron');
+  console.log('Electron loaded:', { app: !!electron.app, BrowserWindow: !!electron.BrowserWindow });
+  app = electron.app;
+  BrowserWindow = electron.BrowserWindow;
+  Menu = electron.Menu;
+  ipcMain = electron.ipcMain;
+  console.log('Destructured:', { app: !!app, BrowserWindow: !!BrowserWindow });
+} catch(e) {
+  console.error('Electron loading error:', e);
+  process.exit(1);
+}
+
 const path = require('path');
-// electron-is-dev is now an ES module, import dynamically
-let isDev = false;
-(async () => {
-  try {
-    const esm = await import('electron-is-dev');
-    isDev = esm.default;
-  } catch (e) {
-    console.warn('electron-is-dev import failed, assuming production', e);
-  }
-})();
 const { spawn } = require('child_process');
 const fs = require('fs');
+
+// electron-is-dev simple - assume dev because we're not packaged
+let isDev = true; // Force dev mode for now
 
 let mainWindow;
 let serverProcess;
@@ -68,32 +74,8 @@ function createWindow() {
 // ═══════════════════════════════════════════════════
 
 function startServer() {
-  // Vérifie si Python est disponible
-  const pythonPath = process.platform === 'win32' ? 'python' : 'python3';
-  
-  console.log('🚀 Démarrage du serveur Likoo...');
-  
-  serverProcess = spawn(pythonPath, [path.join(__dirname, 'server.py')], {
-    cwd: __dirname,
-    env: process.env,
-    shell: true,
-    stdio: ['ignore','pipe','pipe']
-  });
-
-  serverProcess.stdout.on('data', (data) => {
-    console.log(data.toString());
-  });
-  serverProcess.stderr.on('data', (data) => {
-    console.error(data.toString());
-  });
-
-  serverProcess.on('error', (error) => {
-    console.error('❌ Erreur serveur:', error);
-  });
-
-  serverProcess.on('exit', (code) => {
-    console.log(`✅ Serveur fermé avec code ${code}`);
-  });
+  // Serveur Python tourne déjà - ne rien faire ici
+  console.log('✅ Serveur Python externe détecté');
 }
 
 // ═══════════════════════════════════════════════════
@@ -102,9 +84,9 @@ function startServer() {
 // ═══════════════════════════════════════════════════
 
 app.on('ready', () => {
-  // Attend un peu pour que le serveur démarre
+  // Attend plus longtemps pour que le serveur démarre bien
   startServer();
-  setTimeout(createWindow, 2000);
+  setTimeout(createWindow, 4000);
   createMenu();
   
   // Setup window control IPC handlers

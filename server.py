@@ -301,6 +301,16 @@ def upload_avatar():
     # on stocke le chemin relatif qui sera servi par Flask (static_url_path='')
     user.avatar = f"/avatars/{filename}"
     db.session.commit()
+    
+    # Notifier tous les serveurs où cet utilisateur est membre
+    servers = db.session.query(Server).join(ServerMember).filter(ServerMember.user_id == user.id).all()
+    for server in servers:
+        socketio.emit('user_avatar_updated', {
+            'user_id': user.id,
+            'username': user.username,
+            'avatar': user.avatar
+        }, room=f'server_{server.id}')
+    
     return jsonify({'avatar': user.avatar}), 200
 
 
@@ -316,6 +326,8 @@ def update_me():
         user.username = data['username']
     if 'avatar' in data:
         user.avatar = data['avatar']
+    if 'status' in data:
+        user.status = data['status']
     db.session.commit()
     return jsonify(user.to_dict()), 200
 
@@ -515,6 +527,12 @@ def upload_server_icon(server_id):
     
     server.icon_image = f"/server_icons/{filename}"
     db.session.commit()
+    
+    # Émettre l'événement WebSocket pour notifier les autres clients
+    socketio.emit('server_icon_updated', {
+        'server_id': server_id,
+        'icon_image': server.icon_image
+    }, room=f'server_{server_id}')
     
     return jsonify({'icon_image': server.icon_image}), 200
 
@@ -863,7 +881,16 @@ def handle_join_user_room(data):
     """Rejoint la room personnelle pour recevoir les notifs (demandes d'ami, etc.)"""
     user_id = data.get('user_id')
     if user_id:
-        join_room(f'user_{user_id}')
+        room_name = f'user_{user_id}'
+        join_room(room_name)
+        print(f'✅ Utilisateur {user_id} rejoint room: {room_name}')
+
+@socketio.on('join_server')
+def handle_join_server(data):
+    """Rejoint la room d'un serveur pour recevoir les mises à jour (icône, nom, etc.)"""
+    server_id = data.get('server_id')
+    if server_id:
+        join_room(f'server_{server_id}')
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -927,18 +954,24 @@ def on_send_dm(data):
     sender_id = data.get('sender_id')
     receiver_id = data.get('receiver_id')
     content = data.get('content', '').strip()
+    print(f'📤 on_send_dm reçu: sender={sender_id}, receiver={receiver_id}, content={content[:50]}...')
     if not sender_id or not receiver_id or not content:
+        print(f'❌ on_send_dm: données manquantes')
         return
     sender = User.query.get(sender_id)
     receiver = User.query.get(receiver_id)
     if not sender or not receiver:
+        print(f'❌ on_send_dm: utilisateur non trouvé')
         return
     msg = DirectMessage(sender_id=sender_id, receiver_id=receiver_id, content=content)
     db.session.add(msg)
     db.session.commit()
+    print(f'✅ DM sauvegardé: id={msg.id}')
     # Envoyer au destinataire (s'il est connecté)
+    print(f'📨 Emission new_dm à room: user_{receiver_id}')
     socketio.emit('new_dm', msg.to_dict(), room=f'user_{receiver_id}')
     # Confirmer à l'envoyeur
+    print(f'📨 Emission new_dm à room: user_{sender_id}')
     socketio.emit('new_dm', msg.to_dict(), room=f'user_{sender_id}')
 
 
@@ -968,6 +1001,140 @@ def on_status_change(data):
             'user_id': user_id,
             'status': status
         }, broadcast=True)
+
+# ═══════════════════════════════════════════════
+# WEBRTC VOICE
+# ═══════════════════════════════════════════════
+@socketio.on('voice_channel_join')
+def on_voice_join(data):
+    """Utilisateur rejoint un canal vocal"""
+    user_id = data.get('user_id')
+    channel_id = data.get('channel_id')
+    server_id = data.get('server_id')
+    room = f"voice_{channel_id}"
+    join_room(room)
+    
+    # Notifier les autres utilisateurs du canal
+    socketio.emit('voice_user_joined', {
+        'user_id': user_id,
+        'channel_id': channel_id
+    }, room=room, skip_sid=True)
+
+@socketio.on('voice_channel_leave')
+def on_voice_leave(data):
+    """Utilisateur quitte un canal vocal"""
+    user_id = data.get('user_id')
+    channel_id = data.get('channel_id')
+    room = f"voice_{channel_id}"
+    leave_room(room)
+    
+    # Notifier les autres utilisateurs du canal
+    socketio.emit('voice_user_left', {
+        'user_id': user_id,
+        'channel_id': channel_id
+    }, room=room)
+
+@socketio.on('webrtc_offer')
+def on_webrtc_offer(data):
+    """Transmettre une offre WebRTC"""
+    target_user_id = data.get('target_user_id')
+    sender_user_id = data.get('sender_user_id')
+    channel_id = data.get('channel_id')
+    offer = data.get('offer')
+    
+    socketio.emit('webrtc_offer', {
+        'from': sender_user_id,
+        'offer': offer,
+        'channel_id': channel_id
+    }, to=target_user_id)
+
+@socketio.on('webrtc_answer')
+def on_webrtc_answer(data):
+    """Transmettre une réponse WebRTC"""
+    target_user_id = data.get('target_user_id')
+    sender_user_id = data.get('sender_user_id')
+    channel_id = data.get('channel_id')
+    answer = data.get('answer')
+    
+    socketio.emit('webrtc_answer', {
+        'from': sender_user_id,
+        'answer': answer,
+        'channel_id': channel_id
+    }, to=target_user_id)
+
+@socketio.on('webrtc_ice_candidate')
+def on_webrtc_ice(data):
+    """Transmettre un candidat ICE"""
+    target_user_id = data.get('target_user_id')
+    sender_user_id = data.get('sender_user_id')
+    channel_id = data.get('channel_id')
+    candidate = data.get('candidate')
+    
+    socketio.emit('webrtc_ice_candidate', {
+        'from': sender_user_id,
+        'candidate': candidate,
+        'channel_id': channel_id
+    }, to=target_user_id)
+
+@socketio.on('voice_mute_changed')
+def on_voice_mute_changed(data):
+    """Notifier les autres utilisateurs du changement de mute"""
+    channel_id = data.get('channel_id')
+    user_id = data.get('user_id')
+    muted = data.get('muted')
+    room = f"voice_{channel_id}"
+    
+    socketio.emit('voice_mute_changed', {
+        'user_id': user_id,
+        'channel_id': channel_id,
+        'muted': muted
+    }, room=room, skip_sid=True)
+
+@socketio.on('voice_deafen_changed')
+def on_voice_deafen_changed(data):
+    """Notifier les autres utilisateurs du changement de deafen"""
+    channel_id = data.get('channel_id')
+    user_id = data.get('user_id')
+    deafened = data.get('deafened')
+    room = f"voice_{channel_id}"
+    
+    socketio.emit('voice_deafen_changed', {
+        'user_id': user_id,
+        'channel_id': channel_id,
+        'deafened': deafened
+    }, room=room, skip_sid=True)
+
+@socketio.on('voice_streaming_started')
+def on_voice_streaming_started(data):
+    """Notifier les autres utilisateurs qu'on partage l'écran"""
+    channel_id = data.get('channel_id')
+    user_id = data.get('user_id')
+    name = data.get('name', 'Utilisateur')
+    room = f"voice_{channel_id}"
+    
+    print(f"📺 {name} commence le stream vocal sur {channel_id}")
+    
+    socketio.emit('voice_streaming_started', {
+        'user_id': user_id,
+        'channel_id': channel_id,
+        'name': name
+    }, room=room, skip_sid=True)
+
+@socketio.on('voice_streaming_stopped')
+def on_voice_streaming_stopped(data):
+    """Notifier les autres utilisateurs qu'on arrête le partage d'écran"""
+    channel_id = data.get('channel_id')
+    user_id = data.get('user_id')
+    name = data.get('name', 'Utilisateur')
+    room = f"voice_{channel_id}"
+    
+    print(f"⛔ {name} arrête le stream vocal sur {channel_id}")
+    
+    socketio.emit('voice_streaming_stopped', {
+        'user_id': user_id,
+        'channel_id': channel_id,
+        'name': name
+    }, room=room, skip_sid=True)
 
 # ═══════════════════════════════════════════════════
 # ROUTES STATIQUES
@@ -1032,4 +1199,4 @@ if __name__ == '__main__':
     """
     print(banner)
     
-    socketio.run(app, host='0.0.0.0', port=port, debug=debug)
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug, allow_unsafe_werkzeug=True)

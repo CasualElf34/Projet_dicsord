@@ -6,10 +6,10 @@
   "author": "Your Name",
   "license": "MIT",
   "scripts": {
-    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "start": "cross-env ELECTRON_RUN_AS_NODE= electron .",
     "dev": "concurrently \"npm run server\" \"npm run electron\"",
     "server": "python server.py",
-    "electron": "wait-on http://localhost:5000 && env -u ELECTRON_RUN_AS_NODE electron .",
+    "electron": "wait-on http://localhost:5000 && cross-env ELECTRON_RUN_AS_NODE= electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
@@ -70,8 +70,8 @@
   "devDependencies": {
     "concurrently": "^8.2.0",
     "cross-env": "^10.1.0",
-    "electron": "^28.3.3",
-    "electron-builder": "^24.6.0",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
     "wait-on": "^7.0.1"
   },
   "dependencies": {
