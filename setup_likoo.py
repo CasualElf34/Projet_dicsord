@@ -11,22 +11,20 @@ from pathlib import Path
 def setup():
     """Configure l'environnement"""
     print("""
-╔════════════════════════════════════════════╗
-║        🎵 LIKOO v2 SETUP                    ║
-║  Configuration de l'environnement             ║
-╚════════════════════════════════════════════╝
+LIKOO v2 SETUP
+Configuration de l'environnement
     """)
     
     base_dir = Path(__file__).parent
     
     # Crée les dossiers
-    print("📁 Création des répertoires...")
+    print("Création des repertoires...")
     (base_dir / 'assets').mkdir(exist_ok=True)
     (base_dir / 'logs').mkdir(exist_ok=True)
     (base_dir / 'data').mkdir(exist_ok=True)
     
     # Crée la base de données
-    print("🗄️  Initialisation de la base de données...")
+    print("Initialisation de la base de donnees...")
     os.chdir(base_dir)
     
     try:
@@ -35,12 +33,12 @@ def setup():
         
         with app.app_context():
             db.create_all()
-            print("✅ Base de données créée")
+            print("[OK] Base de donnees creee")
     except ImportError as e:
-        print(f"⚠️  Installation des dépendances requise: {e}")
-        print("Exécuter: pip install -r requirements.txt")
+        print(f"[WARNING] Installation des dependances requise: {e}")
+        print("Executer: pip install -r requirements.txt")
     except Exception as e:
-        print(f"❌ Erreur: {e}")
+        print(f"[ERROR] Erreur: {e}")
         return False
     
     # Fichier .env
@@ -54,16 +52,14 @@ DATABASE_URL=sqlite:///likoo.db
 FLASK_ENV=development
 """
         env_file.write_text(env_content)
-        print("📝 Fichier .env.example créé")
+        print("[OK] Fichier .env.example cree")
     
     print("""
-╔════════════════════════════════════════════╗
-║  ✅ SETUP TERMINÉ!                         ║
-╚════════════════════════════════════════════╝
+SETUP TERMINE!
+    
+Prochaines etapes:
 
-📋 Prochaines étapes:
-
-1. Installer les dépendances:
+1. Installer les dependances:
    pip install -r requirements.txt
    npm install
 
@@ -72,7 +68,7 @@ FLASK_ENV=development
 
 3. Ouvrir http://localhost:5000
 
-4. Créer ton compte et c'est parti!
+4. Creer ton compte et c'est parti!
 
 Pour plus d'infos: voir GETTING_STARTED.md
     """)

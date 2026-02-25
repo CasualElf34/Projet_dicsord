@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximizeWindow: () => ipcRenderer.send('maximize-window'),
   closeWindow: () => ipcRenderer.send('close-window'),
   
+  // Google OAuth
+  googleOAuth: () => ipcRenderer.invoke('google-oauth'),
+  
   // Info app
   getAppVersion: (callback) => ipcRenderer.once('app-version', callback),
   

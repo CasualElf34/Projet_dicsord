@@ -6,10 +6,10 @@
   "author": "Your Name",
   "license": "MIT",
   "scripts": {
-    "start": "cross-env ELECTRON_RUN_AS_NODE= electron .",
+    "start": "electron .",
     "dev": "concurrently \"npm run server\" \"npm run electron\"",
     "server": "python server.py",
-    "electron": "wait-on http://localhost:5000 && cross-env ELECTRON_RUN_AS_NODE= electron .",
+    "electron": "wait-on http://localhost:5000 && electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",

@@ -233,3 +233,32 @@ class FriendRequest(db.Model):
             'status': self.status,
             'created_at': self.created_at.isoformat()
         }
+
+
+class ServerInvite(db.Model):
+    """Code d'invitation pour rejoindre un serveur"""
+    __tablename__ = 'server_invites'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    code = db.Column(db.String(10), unique=True, nullable=False)  # Code unique court (ex: ABC123)
+    server_id = db.Column(db.String(36), db.ForeignKey('servers.id'), nullable=False)
+    creator_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    uses = db.Column(db.Integer, default=0)  # Nombre d'utilisations
+    max_uses = db.Column(db.Integer, default=None)  # None = illimite
+    expires_at = db.Column(db.DateTime, default=None)  # None = jamais
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    server = db.relationship('Server', backref='invites')
+    creator = db.relationship('User', backref='created_invites')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'code': self.code,
+            'server_id': self.server_id,
+            'creator_id': self.creator_id,
+            'uses': self.uses,
+            'max_uses': self.max_uses,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'created_at': self.created_at.isoformat()
+        }

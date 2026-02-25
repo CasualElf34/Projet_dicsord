@@ -353,10 +353,6 @@
         <div class="divider-text">OU</div>
       </div>
 
-      <div id="electron-warning" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-bottom:12px;color:#856404;font-size:13px;text-align:center;">
-        ⚠️ Google OAuth n'est pas disponible en Electron.<br><strong>Utilise la connexion manuelle au-dessus.</strong>
-      </div>
-
       <button type="button" class="button-google" id="google-login-btn" onclick="handleGoogleLogin()">
         <svg width="20" height="20" viewBox="0 0 48 48">
           <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19c1.87-4.3 6.02-7.41 11.46-7.41z"></path>
@@ -408,9 +404,6 @@
         <div class="divider-text">OU</div>
       </div>
 
-      <div id="electron-warning-reg" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-bottom:12px;color:#856404;font-size:13px;text-align:center;">
-        ⚠️ Google OAuth n'est pas disponible en Electron.<br><strong>Utilise l'inscription manuelle au-dessus.</strong>
-      </div>
 
       <button type="button" class="button-google" id="google-register-btn" onclick="handleGoogleLogin()">
         <svg width="20" height="20" viewBox="0 0 48 48">
@@ -444,26 +437,19 @@
 
   // Initialiser Google dès que le script est disponible
   function initGoogleAuth() {
-    if (window.google && google.accounts && !isElectron) {
+    if (isElectron) {
+      console.log('✓ Electron detected - Google OAuth will use Electron window');
+      // Pas besoin d'initialiser Google Identity dans Electron
+      return;
+    }
+    
+    if (window.google && google.accounts) {
       google.accounts.id.initialize({
         client_id: '717864681118-u9k9nv7d6708fi6dgbqdin6jl0g956ui.apps.googleusercontent.com',
         callback: handleGoogleSignIn,
         auto_select: false
       });
       console.log('✓ Google Identity initialized');
-    } else if (isElectron) {
-      console.log('⚠ Electron detected - Google OAuth will use external browser');
-      // Afficher les avertissements
-      const warnings = document.querySelectorAll('[id*="electron-warning"]');
-      warnings.forEach(w => w.style.display = 'block');
-      // Désactiver les boutons Google en Electron
-      const googleBtns = document.querySelectorAll('[onclick*="handleGoogleLogin"]');
-      googleBtns.forEach(btn => {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.style.cursor = 'not-allowed';
-        btn.title = 'Connexion Google indisponible en Electron. Utilisez la connexion manuelle.';
-      });
     } else {
       setTimeout(initGoogleAuth, 500);
     }
@@ -483,7 +469,21 @@
     btn.innerHTML = '<span class="loading">⏳</span> Connexion...';
 
     try {
-      if (window.google && google.accounts && google.accounts.id) {
+      // Si on est dans Electron, utiliser l'API Electron
+      if (isElectron && window.electronAPI && window.electronAPI.googleOAuth) {
+        console.log('Using Electron OAuth...');
+        const result = await window.electronAPI.googleOAuth();
+        
+        if (result && result.token) {
+          console.log('Token received from Electron');
+          // Simuler la réponse Google pour utiliser le flux existant
+          await handleGoogleSignIn({ credential: result.token });
+        } else {
+          throw new Error('No token received');
+        }
+      }
+      // Sinon, utiliser Google Identity standard
+      else if (window.google && google.accounts && google.accounts.id) {
         google.accounts.id.prompt((notification) => {
           if (notification.isDismissedMoment()) {
             btn.disabled = false;
@@ -494,9 +494,9 @@
         throw new Error('Google library not loaded');
       }
     } catch (error) {
-      console.error('Erreur Google:', error);
+      console.error('Google error:', error);
       showError(document.getElementById('login-error') || document.getElementById('register-error'), 
-                'Erreur de connexion Google');
+                'Google login error: ' + error.message);
       btn.disabled = false;
       btn.innerHTML = 'Connexion Google';
     }

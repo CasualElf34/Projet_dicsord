@@ -17,32 +17,32 @@ class LikooApp:
         self.url = f'http://{self.host}:{self.port}'
         
     def check_dependencies(self):
-        """Vérifie que Node et npm sont installés"""
+        """Verifie que Node et npm sont installes"""
         try:
             subprocess.run(['npm', '--version'], capture_output=True, check=True)
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
-            print("❌ Node.js/npm n'est pas installé")
-            print("📥 Télécharger depuis: https://nodejs.org")
+            print("[ERROR] Node.js/npm n'est pas installe")
+            print("[INFO] Telecharger depuis: https://nodejs.org")
             return False
     
     def install_dependencies(self):
-        """Installe les dépendances npm"""
+        """Installe les dependances npm"""
         try:
-            print("📦 Installation des dépendances npm...")
+            print("[INFO] Installation des dependances npm...")
             subprocess.run(['npm', 'install'], cwd=Path(__file__).parent, check=True)
             return True
         except subprocess.CalledProcessError:
-            print("❌ Erreur lors de l'installation npm")
+            print("[ERROR] Erreur lors de l'installation npm")
             return False
     
     def run_electron(self):
         """Lance l'app Electron"""
         try:
-            print("🚀 Lancement de Likoo avec Electron...")
+            print("[INFO] Lancement de Likoo avec Electron...")
             subprocess.run(['npm', 'start'], cwd=Path(__file__).parent, check=True)
         except subprocess.CalledProcessError as e:
-            print(f"❌ Erreur au lancement d'Electron: {e}")
+            print(f"[ERROR] Erreur au lancement d'Electron: {e}")
             return False
         return True
     

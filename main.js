@@ -21,6 +21,26 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 
+function loadEnvFromFile() {
+  if (process.env.GOOGLE_CLIENT_ID) return;
+  const envPath = path.join(__dirname, '.env');
+  if (!fs.existsSync(envPath)) return;
+
+  const content = fs.readFileSync(envPath, 'utf8');
+  content.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+    const idx = trimmed.indexOf('=');
+    if (idx === -1) return;
+    const key = trimmed.slice(0, idx).trim();
+    let value = trimmed.slice(idx + 1).trim();
+    value = value.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+    if (!process.env[key]) process.env[key] = value;
+  });
+}
+
+loadEnvFromFile();
+
 // electron-is-dev simple - assume dev because we're not packaged
 let isDev = true; // Force dev mode for now
 
@@ -84,6 +104,17 @@ function startServer() {
 // ═══════════════════════════════════════════════════
 
 app.on('ready', () => {
+  // Electron permissions for media devices (camera, microphone, screen sharing)
+  const { session } = require('electron');
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    // Allow camera, microphone, and screen capture permissions
+    if (permission === 'media' || permission === 'camera' || permission === 'microphone' || permission === 'display-capture') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
   // Attend plus longtemps pour que le serveur démarre bien
   startServer();
   setTimeout(createWindow, 4000);
@@ -210,6 +241,56 @@ function createMenu() {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 }
+
+// ═══════════════════════════════════════════════════
+// GOOGLE OAUTH HANDLER - Simplified
+// ═══════════════════════════════════════════════════
+
+const { shell } = require('electron');
+
+ipcMain.handle('google-oauth', async (event) => {
+  return new Promise((resolve, reject) => {
+    const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+    if (!GOOGLE_CLIENT_ID) {
+      reject(new Error('GOOGLE_CLIENT_ID missing'));
+      return;
+    }
+
+    const state = Math.random().toString(36).substring(2, 15);
+    
+    // Use the redirect_uri that is registered in Google Console
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${GOOGLE_CLIENT_ID}&` +
+      `redirect_uri=http://localhost:5000/oauth/google/callback&` +
+      `response_type=code&` +
+      `scope=openid email profile&` +
+      `state=${state}`;
+
+    shell.openExternal(authUrl);
+
+    // Poll for token
+    const checkInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/api/auth/google/token?state=${state}`);
+        const data = await response.json();
+        
+        if (data.token) {
+          clearInterval(checkInterval);
+          clearTimeout(timeout);
+          resolve({ token: data.token });
+        }
+      } catch (error) {
+        // Continue polling
+      }
+    }, 1000);
+
+    // Timeout after 5 minutes
+    const timeout = setTimeout(() => {
+      clearInterval(checkInterval);
+      reject(new Error('Timeout - Auth cancelled'));
+    }, 300000);
+  });
+});
 
 // ═══════════════════════════════════════════════════
 // IPC HANDLERS

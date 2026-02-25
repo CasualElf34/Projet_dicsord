@@ -22,7 +22,13 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from models import db, User, Server, Channel, Message, FriendRequest, DirectMessage, ServerMember, Role
+from models import db, User, Server, Channel, Message, FriendRequest, DirectMessage, ServerMember, Role, ServerInvite
+
+# Track voice channel members: {channel_id: [user_id, ...]}
+voice_channel_members = {}
+
+# Track user session IDs for WebRTC routing: {user_id: sid}
+user_sessions = {}
 
 # ═══════════════════════════════════════════════════
 # CONFIGURATION
@@ -166,6 +172,80 @@ def login():
 # ─────────────────────────────────────────────
 # GOOGLE OAUTH LOGIN
 # ─────────────────────────────────────────────
+
+# Temporary OAuth token storage (use Redis in production)
+oauth_tokens = {}
+
+@app.route('/oauth/google/callback')
+def oauth_callback():
+    """Google OAuth callback - exchanges code for token"""
+    code = request.args.get('code')
+    state = request.args.get('state')
+    error = request.args.get('error')
+    
+    if error:
+        return f'<h1>Error: {error}</h1>'
+    
+    if not code or not state:
+        return 'Missing code or state', 400
+    
+    try:
+        import requests as req
+        
+        client_id = os.getenv('GOOGLE_CLIENT_ID')
+        client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+        
+        print(f"\n[OAuth] Exchanging code for token...")
+        print(f"  client_id: {bool(client_id)}")
+        print(f"  client_secret: {bool(client_secret)}")
+        
+        response = req.post('https://oauth2.googleapis.com/token', data={
+            'code': code,
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'redirect_uri': 'http://localhost:5000/oauth/google/callback',
+            'grant_type': 'authorization_code'
+        })
+        
+        print(f"[OAuth] Response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            id_token = data.get('id_token')
+            oauth_tokens[state] = id_token
+            print(f"[OAuth] Token stored for state: {state}")
+            
+            return '''
+            <html>
+            <head><title>Success</title></head>
+            <body style="background:#0d0e14;color:#fff;text-align:center;padding:50px;">
+                <h1>Success!</h1>
+                <p>You can close this window</p>
+                <script>window.close();</script>
+            </body>
+            </html>
+            '''
+        else:
+            print(f"[OAuth] Error: {response.text}")
+            return f'<h1>Error: {response.text}</h1>', response.status_code
+            
+    except Exception as e:
+        print(f"[OAuth] Exception: {str(e)}")
+        return f'<h1>Error: {str(e)}</h1>', 500
+
+@app.route('/api/auth/google/token')
+def get_oauth_token():
+    """Get the stored OAuth token"""
+    state = request.args.get('state')
+    if not state:
+        return jsonify({'error': 'State missing'}), 400
+    
+    token = oauth_tokens.get(state)
+    if token:
+        del oauth_tokens[state]
+        return jsonify({'token': token})
+    
+    return jsonify({'waiting': True})
 
 @app.route('/api/auth/google', methods=['POST'])
 def google_login():
@@ -360,7 +440,7 @@ def get_servers():
         for member in user.server_memberships:
             if member.server_id not in seen:
                 seen.add(member.server_id)
-                result.append(member.server_obj)
+                result.append(member.server)
         
         return jsonify([srv.to_dict() for srv in result]), 200
     except Exception as e:
@@ -730,6 +810,163 @@ def get_server_members(server_id):
         return jsonify({'error': f'Erreur: {str(e)}'}), 500
 
 # ═══════════════════════════════════════════════════
+# INVITATIONS - ROUTES
+# ═══════════════════════════════════════════════════
+
+def generate_invite_code():
+    """Genere un code d'invitation court et unique"""
+    chars = string.ascii_uppercase + string.digits
+    while True:
+        code = ''.join(secrets.choice(chars) for _ in range(8))
+        if not ServerInvite.query.filter_by(code=code).first():
+            return code
+
+@app.route('/api/servers/<server_id>/invites', methods=['POST'])
+@jwt_required()
+def create_invite(server_id):
+    """Crée un code d'invitation pour le serveur"""
+    user_id = get_jwt_identity()
+    server = Server.query.get(server_id)
+    
+    if not server:
+        return jsonify({'error': 'Serveur non trouvé'}), 404
+    
+    # Verifier que c'est le proprio ou un mod
+    if server.owner_id != user_id:
+        return jsonify({'error': 'Vous ne pouvez pas creer d\'invitations'}), 403
+    
+    from models import ServerInvite
+    
+    data = request.json or {}
+    code = generate_invite_code()
+    
+    invite = ServerInvite(
+        code=code,
+        server_id=server_id,
+        creator_id=user_id,
+        max_uses=data.get('max_uses'),  # None = illimite
+        expires_at=None  # TODO: ajouter expiration si necessaire
+    )
+    
+    db.session.add(invite)
+    db.session.commit()
+    
+    return jsonify(invite.to_dict()), 201
+
+
+@app.route('/api/servers/<server_id>/invites', methods=['GET'])
+@jwt_required()
+def get_invites(server_id):
+    """Liste les codes d'invitation du serveur"""
+    user_id = get_jwt_identity()
+    server = Server.query.get(server_id)
+    
+    if not server:
+        return jsonify({'error': 'Serveur non trouvé'}), 404
+    
+    # Verifier que c'est member du serveur
+    member = ServerMember.query.filter_by(user_id=user_id, server_id=server_id).first()
+    if not member:
+        return jsonify({'error': 'Vous n\'etes pas membre du serveur'}), 403
+    
+    from models import ServerInvite
+    invites = ServerInvite.query.filter_by(server_id=server_id).all()
+    
+    return jsonify([inv.to_dict() for inv in invites]), 200
+
+
+@app.route('/api/servers/invite/<code>', methods=['POST'])
+@jwt_required()
+def use_invite(code):
+    """Rejoint un serveur via code d'invitation"""
+    user_id = get_jwt_identity()
+    
+    from models import ServerInvite
+    invite = ServerInvite.query.filter_by(code=code).first()
+    
+    if not invite:
+        return jsonify({'error': 'Code d\'invitation invalide'}), 404
+    
+    # Verifier les limites
+    if invite.max_uses and invite.uses >= invite.max_uses:
+        return jsonify({'error': 'Cette invitation a atteint sa limite d\'utilisations'}), 410
+    
+    if invite.expires_at and datetime.utcnow() > invite.expires_at:
+        return jsonify({'error': 'Cette invitation a expiree'}), 410
+    
+    server = invite.server
+    
+    # Verifier que l'utilisateur n'est pas déjà membre
+    existing_member = ServerMember.query.filter_by(
+        user_id=user_id,
+        server_id=server.id
+    ).first()
+    
+    if existing_member:
+        return jsonify({'error': 'Vous etes deja membre du serveur'}), 400
+    
+    # Ajouter comme membre
+    member = ServerMember(user_id=user_id, server_id=server.id)
+    db.session.add(member)
+    
+    # Increment le compteur d'utilisations
+    invite.uses += 1
+    db.session.commit()
+    
+    return jsonify({
+        'message': f'Vous avez rejoint {server.name}',
+        'server': server.to_dict()
+    }), 200
+
+
+@app.route('/api/servers/invites/<invite_id>', methods=['DELETE'])
+@jwt_required()
+def delete_invite(invite_id):
+    """Supprime un code d'invitation"""
+    user_id = get_jwt_identity()
+    
+    from models import ServerInvite
+    invite = ServerInvite.query.get(invite_id)
+    
+    if not invite:
+        return jsonify({'error': 'Invitation non trouvee'}), 404
+    
+    server = invite.server
+    
+    # Verifier que c'est le proprio du serveur
+    if server.owner_id != user_id:
+        return jsonify({'error': 'Vous ne pouvez pas supprimer cette invitation'}), 403
+    
+    db.session.delete(invite)
+    db.session.commit()
+    
+    return jsonify({'message': 'Invitation supprimee'}), 200
+
+# ═══════════════════════════════════════════════════
+# VOICE - ROUTES
+# ═══════════════════════════════════════════════════
+
+@app.route('/api/channels/<channel_id>/voice_members', methods=['GET'])
+@jwt_required()
+def get_voice_members(channel_id):
+    """Récupère les membres actuels dans un canal vocal"""
+    members = voice_channel_members.get(channel_id, [])
+    
+    # Récupérer les infos des utilisateurs
+    result = []
+    for user_id in members:
+        user = User.query.get(user_id)
+        if user:
+            result.append({
+                'user_id': user_id,
+                'name': user.username,
+                'avatar': user.avatar,
+                'color': user.color
+            })
+    
+    return jsonify(result), 200
+
+# ═══════════════════════════════════════════════════
 # MESSAGES - ROUTES (historique)
 # ═══════════════════════════════════════════════════
 
@@ -873,8 +1110,8 @@ def get_dm_history(friend_id):
 @socketio.on('connect')
 def handle_connect(auth=None):
     """Connexion WebSocket"""
-    print(f"🔗 Client connecté: {request.sid}")
-    emit('connect_response', {'message': 'Connecté au serveur'})
+    print(f"[CONNECT] Client connecte: {request.sid}")
+    emit('connect_response', {'message': 'Connecte au serveur'})
 
 @socketio.on('join_user_room')
 def handle_join_user_room(data):
@@ -883,7 +1120,7 @@ def handle_join_user_room(data):
     if user_id:
         room_name = f'user_{user_id}'
         join_room(room_name)
-        print(f'✅ Utilisateur {user_id} rejoint room: {room_name}')
+        print(f'[OK] Utilisateur {user_id} rejoint room: {room_name}')
 
 @socketio.on('join_server')
 def handle_join_server(data):
@@ -894,8 +1131,8 @@ def handle_join_server(data):
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Déconnexion WebSocket"""
-    print(f"❌ Client déconnecté: {request.sid}")
+    """Deconnexion WebSocket"""
+    print(f"[DISCONNECT] Client deconnecte: {request.sid}")
 
 @socketio.on('join_channel')
 def on_join_channel(data):
@@ -904,10 +1141,10 @@ def on_join_channel(data):
     join_room(f'channel_{channel_id}')
     
     emit('status', {
-        'message': 'Utilisateur connecté au canal'
+        'message': 'Utilisateur connecte au canal'
     }, room=f'channel_{channel_id}')
     
-    print(f"✅ Client {request.sid} a rejoint le canal {channel_id}")
+    print(f"[OK] Client {request.sid} a rejoint le canal {channel_id}")
 
 @socketio.on('leave_channel')
 def on_leave_channel(data):
@@ -954,24 +1191,24 @@ def on_send_dm(data):
     sender_id = data.get('sender_id')
     receiver_id = data.get('receiver_id')
     content = data.get('content', '').strip()
-    print(f'📤 on_send_dm reçu: sender={sender_id}, receiver={receiver_id}, content={content[:50]}...')
+    print(f'[DM] on_send_dm recu: sender={sender_id}, receiver={receiver_id}, content={content[:50]}...')
     if not sender_id or not receiver_id or not content:
-        print(f'❌ on_send_dm: données manquantes')
+        print(f'[ERROR] on_send_dm: donnees manquantes')
         return
     sender = User.query.get(sender_id)
     receiver = User.query.get(receiver_id)
     if not sender or not receiver:
-        print(f'❌ on_send_dm: utilisateur non trouvé')
+        print(f'[ERROR] on_send_dm: utilisateur non trouve')
         return
     msg = DirectMessage(sender_id=sender_id, receiver_id=receiver_id, content=content)
     db.session.add(msg)
     db.session.commit()
-    print(f'✅ DM sauvegardé: id={msg.id}')
-    # Envoyer au destinataire (s'il est connecté)
-    print(f'📨 Emission new_dm à room: user_{receiver_id}')
+    print(f'[OK] DM sauvegarde: id={msg.id}')
+    # Envoyer au destinataire (s'il est connecte)
+    print(f'[EMIT] Emission new_dm a room: user_{receiver_id}')
     socketio.emit('new_dm', msg.to_dict(), room=f'user_{receiver_id}')
-    # Confirmer à l'envoyeur
-    print(f'📨 Emission new_dm à room: user_{sender_id}')
+    # Confirmer a l'envoyeur
+    print(f'[EMIT] Emission new_dm a room: user_{sender_id}')
     socketio.emit('new_dm', msg.to_dict(), room=f'user_{sender_id}')
 
 
@@ -1014,11 +1251,39 @@ def on_voice_join(data):
     room = f"voice_{channel_id}"
     join_room(room)
     
-    # Notifier les autres utilisateurs du canal
-    socketio.emit('voice_user_joined', {
+    # Enregistrer le SID pour le routing WebRTC
+    user_sessions[user_id] = request.sid
+    print(f"[VOICE] Session enregistree: {user_id} -> {request.sid}")
+    
+    # Tracker: ajouter à la liste des membres du canal vocal
+    if channel_id not in voice_channel_members:
+        voice_channel_members[channel_id] = []
+    if user_id not in voice_channel_members[channel_id]:
+        voice_channel_members[channel_id].append(user_id)
+    
+    print(f"[VOICE] {user_id} rejoint canal {channel_id}. Membres: {voice_channel_members[channel_id]}")
+    
+    # Récupérer les infos de l'utilisateur
+    user = User.query.get(user_id)
+    server_member = ServerMember.query.filter_by(
+        user_id=user_id,
+        server_id=server_id
+    ).first()
+    
+    user_info = {
         'user_id': user_id,
-        'channel_id': channel_id
-    }, room=room, skip_sid=True)
+        'channel_id': channel_id,
+        'name': user.username if user else 'Utilisateur',
+        'avatar': user.avatar if user else None,
+        'color': user.color if user else '#94a3b8',
+        'role': server_member.role_id if server_member else 'Membre'
+    }
+    
+    # Notifier les AUTRES utilisateurs du canal (pas le sender)
+    socketio.emit('voice_user_joined', user_info, room=room, skip_sid=True)
+    
+    # Notifier le sender lui-même qu'il a rejoint (avec confirmation)
+    socketio.emit('voice_user_joined_self', user_info, to=request.sid)
 
 @socketio.on('voice_channel_leave')
 def on_voice_leave(data):
@@ -1027,6 +1292,20 @@ def on_voice_leave(data):
     channel_id = data.get('channel_id')
     room = f"voice_{channel_id}"
     leave_room(room)
+    
+    # Nettoyer le SID
+    if user_id in user_sessions:
+        del user_sessions[user_id]
+        print(f"[VOICE] Session supprimée: {user_id}")
+    
+    # Tracker: retirer de la liste des membres
+    if channel_id in voice_channel_members:
+        if user_id in voice_channel_members[channel_id]:
+            voice_channel_members[channel_id].remove(user_id)
+        if not voice_channel_members[channel_id]:
+            del voice_channel_members[channel_id]
+    
+    print(f"[VOICE] {user_id} a quitté canal {channel_id}")
     
     # Notifier les autres utilisateurs du canal
     socketio.emit('voice_user_left', {
@@ -1042,11 +1321,18 @@ def on_webrtc_offer(data):
     channel_id = data.get('channel_id')
     offer = data.get('offer')
     
+    # Obtenir le SID du destinataire
+    target_sid = user_sessions.get(target_user_id)
+    if not target_sid:
+        print(f"[WEBRTC] WARNING Pas de session pour {target_user_id}")
+        return
+    
+    print(f"[WEBRTC] Envoi offer: {sender_user_id} -> {target_user_id} (sid={target_sid})")
     socketio.emit('webrtc_offer', {
         'from': sender_user_id,
         'offer': offer,
         'channel_id': channel_id
-    }, to=target_user_id)
+    }, to=target_sid)
 
 @socketio.on('webrtc_answer')
 def on_webrtc_answer(data):
@@ -1056,11 +1342,18 @@ def on_webrtc_answer(data):
     channel_id = data.get('channel_id')
     answer = data.get('answer')
     
+    # Obtenir le SID du destinataire
+    target_sid = user_sessions.get(target_user_id)
+    if not target_sid:
+        print(f"[WEBRTC] WARNING Pas de session pour {target_user_id}")
+        return
+    
+    print(f"[WEBRTC] Envoi answer: {sender_user_id} -> {target_user_id} (sid={target_sid})")
     socketio.emit('webrtc_answer', {
         'from': sender_user_id,
         'answer': answer,
         'channel_id': channel_id
-    }, to=target_user_id)
+    }, to=target_sid)
 
 @socketio.on('webrtc_ice_candidate')
 def on_webrtc_ice(data):
@@ -1070,11 +1363,16 @@ def on_webrtc_ice(data):
     channel_id = data.get('channel_id')
     candidate = data.get('candidate')
     
+    # Obtenir le SID du destinataire
+    target_sid = user_sessions.get(target_user_id)
+    if not target_sid:
+        return  # Silencieux pour ICE car il y en a beaucoup
+    
     socketio.emit('webrtc_ice_candidate', {
         'from': sender_user_id,
         'candidate': candidate,
         'channel_id': channel_id
-    }, to=target_user_id)
+    }, to=target_sid)
 
 @socketio.on('voice_mute_changed')
 def on_voice_mute_changed(data):
@@ -1112,7 +1410,7 @@ def on_voice_streaming_started(data):
     name = data.get('name', 'Utilisateur')
     room = f"voice_{channel_id}"
     
-    print(f"📺 {name} commence le stream vocal sur {channel_id}")
+    print(f"[VOICE] {name} commence le stream vocal sur {channel_id}")
     
     socketio.emit('voice_streaming_started', {
         'user_id': user_id,
@@ -1122,13 +1420,13 @@ def on_voice_streaming_started(data):
 
 @socketio.on('voice_streaming_stopped')
 def on_voice_streaming_stopped(data):
-    """Notifier les autres utilisateurs qu'on arrête le partage d'écran"""
+    """Notifier les autres utilisateurs qu'on arrete le partage d'ecran"""
     channel_id = data.get('channel_id')
     user_id = data.get('user_id')
     name = data.get('name', 'Utilisateur')
     room = f"voice_{channel_id}"
     
-    print(f"⛔ {name} arrête le stream vocal sur {channel_id}")
+    print(f"[VOICE] {name} arrete le stream vocal sur {channel_id}")
     
     socketio.emit('voice_streaming_stopped', {
         'user_id': user_id,

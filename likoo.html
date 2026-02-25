@@ -41,7 +41,8 @@
   <div class="logo" onclick="showHome()">Likoo</div>
   <div class="nav-servers" id="navServers"></div>
   <div class="nav-sep"></div>
-  <div class="nav-add" onclick="openModal('modalCreateServer')">+ Serveur</div>
+  <div class="nav-add" onclick="openModal('modalCreateServer')">Creer</div>
+  <div class="nav-add" onclick="openJoinServerModal()" style="background:rgba(94,109,132,.3)">Rejoindre</div>
   <div class="nav-sep"></div>
   <div class="nav-profile">
     <div class="nav-av" id="navAv" onclick="openSettings()">
@@ -284,6 +285,13 @@
           <div id="settingsChannels" style="display:flex;flex-direction:column;gap:0;padding:8px 0"></div>
         </div>
         
+        <!-- TAB: INVITES -->
+        <div id="tabInvites" class="settings-tab-content" style="display:none">
+          <h3 style="font-size:22px;font-weight:900;margin:0 0 24px 0">Codes d'invitation</h3>
+          <button class="btn btn-primary" onclick="createNewInvite()" style="margin-bottom:28px;font-size:15px">+ Creer une invitation</button>
+          <div id="invitesList" style="display:flex;flex-direction:column;gap:16px"></div>
+        </div>
+        
         <!-- TAB: DELETE -->
         <div id="tabDelete" class="settings-tab-content" style="display:none">
           <h3 style="font-size:22px;font-weight:900;margin:0 0 28px 0;color:var(--red)">Zone de danger</h3>
@@ -519,6 +527,50 @@
       <div class="toggle-row">
         <span class="toggle-label">Notifications sonores</span>
         <label class="toggle"><input type="checkbox" checked><div class="toggle-track"></div></label>
+      </div>
+    </div>
+
+    <!-- Audio Devices -->
+    <div class="settings-section">
+      <h3>🔊 Appareils audio</h3>
+      <div style="margin-bottom:15px">
+        <label style="font-size:12px;font-weight:700;color:var(--text4);display:block;margin-bottom:6px">🎤 Microphone</label>
+        <select id="audioInputSelect" onchange="setAudioInput(this.value)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-family:inherit;font-size:13px">
+          <option value="">-- Charger les appareils --</option>
+        </select>
+        <small style="font-size:11px;color:var(--text4);margin-top:4px;display:block">Sélectionnez votre microphone</small>
+      </div>
+      <div style="margin-bottom:15px">
+        <label style="font-size:12px;font-weight:700;color:var(--text4);display:block;margin-bottom:6px">🎧 Haut-parleurs / Casque</label>
+        <select id="audioOutputSelect" onchange="setAudioOutput(this.value)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-family:inherit;font-size:13px">
+          <option value="">-- Charger les appareils --</option>
+        </select>
+        <small style="font-size:11px;color:var(--text4);margin-top:4px;display:block">Sélectionnez vos haut-parleurs/casque</small>
+      </div>
+      <button class="btn btn-ghost" onclick="refreshAudioDevices()" style="width:100%;font-size:13px">🔄 Rafraîchir les appareils</button>
+      
+      <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+        <label style="font-size:12px;font-weight:700;color:var(--text4);display:block;margin-bottom:10px">🎚️ Test du microphone</label>
+        
+        <div style="margin-bottom:15px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <button id="micTestBtn" class="btn btn-primary" onclick="toggleMicTest()" style="padding:8px 16px;font-size:12px">▶ Tester</button>
+            <div style="flex:1;height:20px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative">
+              <div id="micTestBar" style="height:100%;width:0%;background:linear-gradient(90deg, #22c55e 0%, #10b981 50%, #059669 100%);transition:width 0.05s ease"></div>
+              <div id="micTestThreshold" style="position:absolute;top:0;bottom:0;width:2px;background:#f59e0b;left:15%;transition:left 0.2s ease"></div>
+            </div>
+          </div>
+          <small style="font-size:11px;color:var(--text4);display:block">Parlez pour voir la barre s'animer. La ligne orange = seuil de détection</small>
+        </div>
+        
+        <div style="margin-bottom:10px">
+          <label style="font-size:12px;font-weight:700;color:var(--text4);display:block;margin-bottom:6px">Sensibilité (seuil de détection)</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="range" id="micSensitivity" min="0.005" max="0.15" step="0.005" value="0.03" oninput="updateMicSensitivity(this.value)" style="flex:1">
+            <span id="micSensitivityValue" style="font-size:12px;font-weight:600;color:var(--accent);min-width:40px">0.030</span>
+          </div>
+          <small style="font-size:11px;color:var(--text4);display:block;margin-top:4px">Plus bas = plus sensible (détecte le bruit ambiant). Plus haut = moins sensible (seulement voix forte)</small>
+        </div>
       </div>
     </div>
 
@@ -844,12 +896,12 @@ function initSocket() {
   socket = io('http://localhost:5000');
 
   socket.on('connect', () => {
-    console.log('✅ Socket connecté');
+    console.log('[OK] Socket connecte');
     if (S.activeCh) socket.emit('join_channel', { channel_id: S.activeCh });
     // Rejoindre la room personnelle pour les notifs (demandes d'ami, etc.)
     if (S.me?.id) {
       socket.emit('join_user_room', { user_id: S.me.id });
-      console.log('✅ Rejoint room: user_' + S.me.id);
+      console.log('[OK] Rejoint room: user_' + S.me.id);
     } else {
       console.warn('⚠️ S.me.id non défini lors de la connexion socket');
     }
@@ -873,9 +925,9 @@ function initSocket() {
   });
 
   socket.on('new_dm', (msg) => {
-    console.log('📨 new_dm reçu:', msg);
+    console.log('[DM] new_dm recu:', msg);
     if (!msg?.author) {
-      console.error('❌ new_dm: author manquant', msg);
+      console.error('[ERROR] new_dm: author manquant', msg);
       return;
     }
     const key = msg.sender_id === S.me.id ? msg.receiver_id : msg.sender_id;
@@ -890,7 +942,7 @@ function initSocket() {
       reactions: [],
       author: { name: msg.author.username, av: msg.author.avatar, color: msg.author.color || '#94a3b8' }
     });
-    console.log('✅ DM ajouté à la conversation avec clé:', key);
+    console.log('[OK] DM ajoute a la conversation avec cle:', key);
     if (S.dmChannel === key) renderChat();
     else {
       const sender = (S.friends||[]).find(f=>f.id===key);
@@ -956,28 +1008,65 @@ function initSocket() {
   // WEBRTC LISTENERS
   // ═══════════════════════════════════════════════
   socket.on('voice_user_joined', (data) => {
-    console.log(`👤 ${data.user_id} a rejoint le canal vocal`);
+    console.log(`[USER] ${data.user_id} (${data.name}) a rejoint le canal vocal`);
     if (S.inVoice && data.channel_id === S.activeCh) {
+      // Ajouter le membre à la liste s'il n'existe pas déjà
+      const exists = S.inVoice.members.find(m => m.user_id === data.user_id);
+      if (!exists) {
+        S.inVoice.members.push({
+          user_id: data.user_id,
+          name: data.name || 'Utilisateur',
+          avatar: data.avatar || '👤',
+          color: data.color || '#94a3b8',
+          status: 'online',
+          role: data.role || 'Membre',
+          muted: false,
+          streaming: false
+        });
+        renderVoiceControls();
+      }
       WebRTC.addPeer(data.user_id);
     }
   });
 
   socket.on('voice_user_left', (data) => {
-    console.log(`👤 ${data.user_id} a quitté le canal vocal`);
+    console.log(`[USER] ${data.user_id} a quitte le canal vocal`);
+    if (S.inVoice) {
+      S.inVoice.members = S.inVoice.members.filter(m => m.user_id !== data.user_id);
+      renderVoiceControls();
+    }
     WebRTC.removePeer(data.user_id);
   });
 
+  socket.on('voice_user_joined_self', (data) => {
+    console.log(`[SELF] Vous avez rejoint le canal vocal`);
+  });
+
   socket.on('webrtc_offer', async (data) => {
-    console.log(`📤 Offre reçue de ${data.from}`);
+    // Ignorer nos propres offres
+    if (data.from === S.me.id) {
+      console.log(`[OFFER] ⏭️ Ignorer offre de nous-meme`);
+      return;
+    }
+    console.log(`[OFFER] Offre recue de ${data.from}`);
     await WebRTC.handleOffer(data.from, data.offer);
   });
 
   socket.on('webrtc_answer', async (data) => {
-    console.log(`📥 Réponse reçue de ${data.from}`);
+    // Ignorer nos propres reponses
+    if (data.from === S.me.id) {
+      console.log(`[ANSWER] ⏭️ Ignorer reponse de nous-meme`);
+      return;
+    }
+    console.log(`[ANSWER] Reponse recue de ${data.from}`);
     await WebRTC.handleAnswer(data.from, data.answer);
   });
 
   socket.on('webrtc_ice_candidate', async (data) => {
+    // Ignorer nos propres candidats ICE
+    if (data.from === S.me.id) {
+      return;
+    }
     await WebRTC.handleIceCandidate(data.from, data.candidate);
   });
 
@@ -1004,7 +1093,7 @@ function initSocket() {
   });
 
   socket.on('voice_streaming_started', (data) => {
-    console.log(`🎬 ${data.name} commence à partager son écran`);
+    console.log(`[STREAM] ${data.name} commence a partager son ecran`);
     if (S.inVoice && data.channel_id === S.activeCh) {
       const member = S.inVoice.members.find(m => m.user_id === data.user_id);
       if (member) {
@@ -1015,7 +1104,7 @@ function initSocket() {
   });
 
   socket.on('voice_streaming_stopped', (data) => {
-    console.log(`⛔ ${data.name} arrête le partage d'écran`);
+    console.log(`[STREAM] ${data.name} arrete le partage d'ecran`);
     if (S.inVoice && data.channel_id === S.activeCh) {
       const member = S.inVoice.members.find(m => m.user_id === data.user_id);
       if (member) {
@@ -1366,10 +1455,10 @@ function sendMsg(){
   pushMsg(key,{author:{name:S.me.name,av:S.me.av,color:S.me.color},content:text});
   // Envoi au backend si socket + id dispo (persistence + broadcast aux autres)
   if(S.view==='server' && socket && S.me.id){
-    console.log('📤 Envoi message au serveur:', {channel_id:key,user_id:S.me.id});
+    console.log('[SEND] Envoi message au serveur:', {channel_id:key,user_id:S.me.id});
     socket.emit('send_message',{channel_id:key,content:text,user_id:S.me.id});
   } else if(S.view==='dm' && socket && S.me.id){
-    console.log('📤 Envoi DM:', {sender_id:S.me.id,receiver_id:S.dmChannel});
+    console.log('[SEND] Envoi DM:', {sender_id:S.me.id,receiver_id:S.dmChannel});
     socket.emit('send_dm',{sender_id:S.me.id,receiver_id:S.dmChannel,content:text});
   }
 }
@@ -1417,22 +1506,139 @@ const WebRTC = {
   peers: {},           // { userId: RTCPeerConnection }
   localStream: null,   // MediaStream du microphone
   audioElements: {},   // { userId: HTMLAudioElement }
+  audioContext: null,  // Web Audio API context
+  analyser: null,      // Audio analyser for sound detection
+  gainNode: null,      // Noise gate gain node
+  highPassFilter: null, // High pass filter pour réduction de bruit
+  compressor: null,    // Dynamics compressor pour réduction de bruit
+  mediaDestination: null, // Media stream destination for filtered audio
+  dataArray: null,     // Data array for frequency analysis
   
   async init() {
     try {
-      console.log('🎤 Demande permission microphone...');
-      this.localStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
+      console.log('[AUDIO] Demande permission microphone...');
+      
+      // Get selected audio input device
+      const selectedInput = localStorage.getItem('likoo_audioInput') || '';
+      console.log(`[AUDIO] Appareil sélectionné: ${selectedInput || 'défaut'}`);
+      
+      let audioConstraints = {
+        echoCancellation: true, 
+        noiseSuppression: true,
+        autoGainControl: true
+      };
+      
+      // If a specific device is selected, use it
+      if (selectedInput) {
+        audioConstraints.deviceId = { exact: selectedInput };
+      }
+      
+      // Try with selected device first, fallback to default if fails
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: audioConstraints
+        });
+        console.log('[OK] Microphone avec contraintes spécifiques');
+      } catch(deviceError) {
+        console.warn('[AUDIO] Erreur avec appareil spécifique, fallback vers défaut:', deviceError.message);
+        // Fallback: try without specific device ID
+        audioConstraints = {
           echoCancellation: true, 
           noiseSuppression: true,
-          autoGainControl: true 
-        } 
+          autoGainControl: true
+        };
+        this.localStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: audioConstraints
+        });
+        console.log('[OK] Microphone avec défaut');
+      }
+      
+      // Ensure all audio tracks are enabled
+      const audioTracks = this.localStream.getAudioTracks();
+      console.log(`[AUDIO] Nombre de tracks: ${audioTracks.length}`);
+      audioTracks.forEach((track, idx) => {
+        console.log(`[AUDIO] Track ${idx}: kind=${track.kind}, enabled=${track.enabled}, state=${track.readyState}`);
+        track.enabled = true; // Force enable
       });
-      console.log('✅ Microphone activé');
+      
+      // Initialiser Web Audio API pour détecter le son du microphone et appliquer une réduction de bruit
+      try {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Resume audio context if suspended (required by some browsers)
+        if (this.audioContext.state === 'suspended') {
+          console.log('[AUDIO] AudioContext suspended, resuming...');
+          await this.audioContext.resume();
+          console.log('[AUDIO] AudioContext resumed');
+        }
+        
+        const source = this.audioContext.createMediaStreamSource(this.localStream);
+        
+        // === RÉDUCTION DE BRUIT ===
+        // 1. HIGH PASS FILTER (300Hz) - enlève les bruits bas (ventilateur, clim, etc.)
+        this.highPassFilter = this.audioContext.createBiquadFilter();
+        this.highPassFilter.type = 'highpass';
+        this.highPassFilter.frequency.value = 300; // 300Hz cutoff
+        this.highPassFilter.Q.value = 1;
+        console.log('[AUDIO] ✓ High Pass Filter (300Hz) activé');
+        
+        // 2. COMPRESSOR - normalise les variations de volume et réduit les pics
+        this.compressor = this.audioContext.createDynamicsCompressor();
+        this.compressor.threshold.value = -50;      // Détecte à partir de -50dB
+        this.compressor.knee.value = 40;            // Transition douce
+        this.compressor.ratio.value = 12;           // Compression forte (12:1)
+        this.compressor.attack.value = 0.003;       // Attaque rapide
+        this.compressor.release.value = 0.25;       // Relâchement lent
+        console.log('[AUDIO] ✓ Compressor activé');
+        
+        // 3. GAIN NODE - pour le noise gate
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = 1; // Volume normal par défaut
+        
+        // 4. MEDIA DESTINATION - pour envoyer l'audio filtré via WebRTC
+        this.mediaDestination = this.audioContext.createMediaStreamDestination();
+        
+        // === CHAÎNE DE TRAITEMENT ===
+        // source -> highPassFilter -> compressor -> gainNode -> mediaDestination + analyser
+        source.connect(this.highPassFilter);
+        this.highPassFilter.connect(this.compressor);
+        this.compressor.connect(this.gainNode);
+        this.gainNode.connect(this.mediaDestination);
+        
+        this.analyser = this.audioContext.createAnalyser();
+        this.analyser.fftSize = 256;
+        this.analyser.smoothingTimeConstant = 0.3;
+        this.gainNode.connect(this.analyser);
+        this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        console.log('[AUDIO] ✓ Chaîne audio complète initialisée');
+        
+        // Remplacer localStream par le stream filtré pour WebRTC
+        const originalStream = this.localStream;
+        this.localStream = this.mediaDestination.stream;
+        
+        // Transférer les tracks du stream original si nécessaire
+        if (originalStream.getAudioTracks().length > 0) {
+          console.log('[AUDIO] ✓ Noise gate activé');
+        }
+        
+        // Démarrer la détection d'audio
+        this.startAudioDetection();
+      } catch(audioApiError) {
+        console.error('[AUDIO] Web Audio API erreur:', audioApiError);
+      }
+      
       return true;
     } catch(e) {
-      console.error('❌ Erreur microphone:', e);
-      alert('Permission microphone refusée - audio non disponible');
+      console.error('[ERROR] Erreur microphone:', e.name, e.message);
+      if (e.name === 'NotAllowedError') {
+        alert('Permission microphone refusée - Vérifiez vos paramètres de confidentialité');
+      } else if (e.name === 'NotFoundError') {
+        alert('Aucun microphone detecté - Vérifiez votre équipement audio');
+      } else if (e.name === 'NotReadableError') {
+        alert('Microphone déjà utilisé par une autre application - Fermer l\'autre application et reconnecter');
+      } else {
+        alert('Erreur microphone: ' + e.message);
+      }
       return false;
     }
   },
@@ -1447,17 +1653,26 @@ const WebRTC = {
     
     // Ajouter les tracks locaux
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
+      const audioTracks = this.localStream.getAudioTracks();
+      console.log(`🎤 Audio tracks à envoyer: ${audioTracks.length}`);
+      audioTracks.forEach(track => {
+        console.log(`   - Track audio: enabled=${track.enabled}, state=${track.readyState}`);
+        track.enabled = true; // S'assurer que c'est activé
         pc.addTrack(track, this.localStream);
       });
+    } else {
+      console.error('❌ Pas de localStream!');
     }
     
     // Recevoir les tracks distants
     pc.ontrack = (event) => {
-      console.log(`🎵 Track reçu de ${userId}`);
+      console.log(`[TRACK] Track reçu de ${userId}`);
+      console.log(`[TRACK] Streams: ${event.streams.length}, Track: kind=${event.track.kind}, enabled=${event.track.enabled}`);
+      
       const videoTracks = event.streams[0].getVideoTracks();
       if (videoTracks.length > 0) {
         // C'est un stream vidéo (écran partagé)
+        console.log(`[VIDEO] ${videoTracks.length} pistes vidéo reçues`);
         const remoteVideo = q('#remoteStream');
         if (remoteVideo) {
           remoteVideo.srcObject = event.streams[0];
@@ -1465,6 +1680,12 @@ const WebRTC = {
         }
       } else {
         // C'est l'audio
+        // Ne pas jouer notre propre audio
+        if (userId === S.me.id) {
+          console.log(`[AUDIO] ⏭️ Ignorer notre propre audio`);
+          return;
+        }
+        console.log(`[AUDIO] Stream audio reçu de ${userId}, envoi à playRemoteAudio`);
         this.playRemoteAudio(userId, event.streams[0]);
       }
     };
@@ -1512,16 +1733,25 @@ const WebRTC = {
       this.peers[fromUserId] = pc;
       
       if (this.localStream) {
-        this.localStream.getTracks().forEach(track => {
+        const audioTracks = this.localStream.getAudioTracks();
+        console.log(`🎤 Audio tracks pour ${fromUserId}: ${audioTracks.length}`);
+        audioTracks.forEach(track => {
+          console.log(`   - Envoi track: enabled=${track.enabled}, state=${track.readyState}`);
+          track.enabled = true;
           pc.addTrack(track, this.localStream);
         });
+      } else {
+        console.error('❌ Pas de localStream dans handleOffer!');
       }
       
       pc.ontrack = (event) => {
-        console.log(`🎵 Track reçu de ${fromUserId}`);
+        console.log(`[TRACK] Track reçu de ${fromUserId}`);
+        console.log(`[TRACK] Streams: ${event.streams.length}, Track: kind=${event.track.kind}, enabled=${event.track.enabled}`);
+        
         const videoTracks = event.streams[0].getVideoTracks();
         if (videoTracks.length > 0) {
           // C'est un stream vidéo (écran partagé)
+          console.log(`[VIDEO] ${videoTracks.length} pistes vidéo reçues de ${fromUserId}`);
           const remoteVideo = q('#remoteStream');
           if (remoteVideo) {
             remoteVideo.srcObject = event.streams[0];
@@ -1529,6 +1759,12 @@ const WebRTC = {
           }
         } else {
           // C'est l'audio
+          // Ne pas jouer notre propre audio
+          if (fromUserId === S.me.id) {
+            console.log(`[AUDIO] ⏭️ Ignorer notre propre audio`);
+            return;
+          }
+          console.log(`[AUDIO] Stream audio reçu de ${fromUserId}, envoi à playRemoteAudio`);
           this.playRemoteAudio(fromUserId, event.streams[0]);
         }
       };
@@ -1576,16 +1812,49 @@ const WebRTC = {
   },
   
   playRemoteAudio(userId, stream) {
-    if (this.audioElements[userId]) return;
+    if (this.audioElements[userId]) {
+      console.warn(`[AUDIO] Audio element pour ${userId} déjà existe`);
+      return;
+    }
+    
+    const audioTracks = stream.getAudioTracks();
+    console.log(`🔊 Création audio element pour ${userId}`);
+    console.log(`   - Audio tracks dans stream: ${audioTracks.length}`);
+    console.log(`   - Détails tracks:`, audioTracks.map(t => ({ 
+      kind: t.kind, 
+      enabled: t.enabled, 
+      state: t.readyState,
+      settings: t.getSettings ? t.getSettings() : 'N/A'
+    })));
+    
+    if (audioTracks.length === 0) {
+      console.error(`[AUDIO] ⚠️  Pas d'audio tracks dans le stream de ${userId}!`);
+    }
     
     const audio = new Audio();
     audio.srcObject = stream;
     audio.autoplay = true;
     audio.playsinline = true;
-    document.body.appendChild(audio); // Ajouter au DOM pour que ça joue
+    audio.volume = 1;
     
+    audio.onerror = (e) => console.error(`[AUDIO] Erreur audio ${userId}:`, e);
+    audio.onplay = () => console.log(`[AUDIO] ▶️  Audio ${userId} en lecture`);
+    audio.onpause = () => console.log(`[AUDIO] ⏸️  Audio ${userId} en pause`);
+    audio.onstalled = () => console.warn(`[AUDIO] ⚠️  Audio ${userId} stalled`);
+    
+    // Set audio output device if available and supported
+    const selectedOutput = localStorage.getItem('likoo_audioOutput');
+    if (selectedOutput && audio.setSinkId) {
+      audio.setSinkId(selectedOutput)
+        .then(() => console.log(`[AUDIO] ✓ Output device défini pour ${userId}: ${selectedOutput}`))
+        .catch(e => console.error(`[AUDIO] Erreur setting output device ${userId}:`, e));
+    } else if (selectedOutput && !audio.setSinkId) {
+      console.warn(`[AUDIO] setSinkId non supporté par ce navigateur`);
+    }
+    
+    document.body.appendChild(audio);
     this.audioElements[userId] = audio;
-    console.log(`🔊 Lecture audio ${userId}`);
+    console.log(`[AUDIO] ✓ Audio element créé et ajouté au DOM pour ${userId}`);
   },
   
   removePeer(userId) {
@@ -1607,9 +1876,133 @@ const WebRTC = {
   
   cleanup() {
     Object.keys(this.peers).forEach(userId => this.removePeer(userId));
+    
+    // Arrêter les tracks du stream filtré
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
+    }
+    
+    // Déconnecter et fermer les nœuds audio
+    if (this.highPassFilter) {
+      this.highPassFilter.disconnect();
+      this.highPassFilter = null;
+    }
+    
+    if (this.compressor) {
+      this.compressor.disconnect();
+      this.compressor = null;
+    }
+    
+    if (this.gainNode) {
+      this.gainNode.disconnect();
+      this.gainNode = null;
+    }
+    
+    if (this.mediaDestination) {
+      this.mediaDestination.disconnect();
+      this.mediaDestination = null;
+    }
+    
+    if (this.analyser) {
+      this.analyser.disconnect();
+      this.analyser = null;
+    }
+    
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+    
+    this.stopAudioDetection();
+  },
+  
+  audioDetectionInterval: null,
+  
+  startAudioDetection() {
+    if (!this.analyser || !this.dataArray) {
+      console.warn('[AUDIO] Analyser ou dataArray non initialisé');
+      return;
+    }
+    
+    console.log('[AUDIO] Démarrage détection audio...');
+    let debugLogCount = 0;
+    
+    this.audioDetectionInterval = setInterval(() => {
+      // Utiliser getByteTimeDomainData pour mieux détecter la voix
+      this.analyser.getByteTimeDomainData(this.dataArray);
+      
+      // Calculer la variation (mieux pour détecter la voix que le volume moyen)
+      let sum = 0;
+      for (let i = 0; i < this.dataArray.length; i++) {
+        const normalized = (this.dataArray[i] - 128) / 128;
+        sum += normalized * normalized;
+      }
+      const rms = Math.sqrt(sum / this.dataArray.length);
+      
+      // Charger le seuil personnalisé (défaut 0.03)
+      const threshold = parseFloat(localStorage.getItem('likoo_micSensitivity') || '0.03');
+      
+      // Appliquer le noise gate: réduire le volume si RMS < threshold
+      if (this.gainNode) {
+        if (rms > threshold) {
+          // Volume normal quand on parle
+          this.gainNode.gain.value = 1;
+        } else {
+          // Couper presque complètement le son quand il y a que du bruit ambiant
+          this.gainNode.gain.value = 0.01; // -40dB = presque silencieux
+        }
+      }
+      
+      // Log de debug toutes les 30 itérations (3 secondes)
+      debugLogCount++;
+      if (debugLogCount === 30) {
+        console.log(`[AUDIO DEBUG] Volume RMS: ${rms.toFixed(3)} | Seuil: ${threshold.toFixed(3)} | Gain: ${this.gainNode ? this.gainNode.gain.value.toFixed(2) : 'N/A'}`);
+        debugLogCount = 0;
+      }
+      
+      // Trouver l'avatar de l'utilisateur courant dans le voice panel
+      const selfAvatarEl = document.querySelector('.voice-self .vm-avatar');
+      if (selfAvatarEl) {
+        // Utiliser le seuil personnalisé
+        if (rms > threshold) {
+          // Changer la bordure en vert quand on parle
+          const intensity = Math.min(rms / (threshold * 3), 1); // Opacité basée sur l'intensité
+          selfAvatarEl.style.borderColor = `rgba(34, 197, 94, ${0.7 + intensity * 0.3})`;
+          selfAvatarEl.style.borderWidth = '3px';
+        } else {
+          // Revenir à la couleur d'origine
+          selfAvatarEl.style.borderColor = 'var(--accent)';
+          selfAvatarEl.style.borderWidth = '2px';
+        }
+      } else {
+        // Log seulement toutes les 50 itérations pour ne pas spammer
+        if (!this._noAvatarLogCount) this._noAvatarLogCount = 0;
+        this._noAvatarLogCount++;
+        if (this._noAvatarLogCount === 50) {
+          console.warn('[AUDIO] Avatar .voice-self .vm-avatar non trouvé');
+          this._noAvatarLogCount = 0;
+        }
+      }
+    }, 100);
+  },
+  
+  stopAudioDetection() {
+    if (this.audioDetectionInterval) {
+      clearInterval(this.audioDetectionInterval);
+      this.audioDetectionInterval = null;
+      
+      // Réinitialiser la bordure de l'avatar
+      const selfAvatarEl = document.querySelector('.voice-self .vm-avatar');
+      if (selfAvatarEl) {
+        selfAvatarEl.style.borderColor = 'var(--accent)';
+        selfAvatarEl.style.borderWidth = '2px';
+      }
+      
+      const overlay = q('#microphoneOverlay');
+      if (overlay) {
+        overlay.remove();
+      }
     }
   },
   
@@ -1617,13 +2010,13 @@ const WebRTC = {
   
   async startScreenShare() {
     try {
-      console.log('📺 Demande permission screen...');
+      console.log('[SCREEN] Demande permission screen...');
       this.screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { cursor: 'always' },
         audio: false
       });
       
-      console.log('✅ Screen partage activé');
+      console.log('[OK] Screen partage active');
       
       // Remplacer les video tracks de tous les peers avec le screen
       const videoTrack = this.screenStream.getVideoTracks()[0];
@@ -1690,46 +2083,92 @@ const WebRTC = {
 // VOICE
 // ═══════════════════════════════════════════════
 function joinVoice(id){
+  console.log(`[VOICE] Rejoindre canal vocal: ${id}`);
   const ch=S.activeSrv?.channels.find(c=>c.id===id);
-  // Charger les vrais membres du serveur pour le canal vocal
-  const voiceMembers = S.activeSrv?.members || [];
+  
+  // Initialiser avec soi-même
   S.inVoice={
     id,
     name:ch?.name||'Vocal',
     muted:false,
     deafened:false,
     streaming:false,
-    members: voiceMembers.map(m => ({
-      user_id: m.user_id,
-      name: m.name || m.username,
-      avatar: m.avatar,
-      color: m.color || '#94a3b8',
-      status: m.status || 'online',
-      role: m.role || 'Membre'
-    }))
+    members: [
+      {
+        user_id: S.me.id,
+        name: S.me.name || S.me.username || 'Vous',
+        avatar: S.me.avatar,
+        color: S.me.color || 'var(--accent)',
+        status: 'online',
+        role: 'Membre',
+        muted: false,
+        streaming: false
+      }
+    ]
   };
   S.activeCh=id;
+  console.log(`[VOICE] S.activeCh = ${S.activeCh}`);
   renderChannels();
   renderVoiceControls();
   updateTitlebar('Vocal: '+S.inVoice.name);
   
-  // Initialiser WebRTC
+  // Récupérer les membres déjà dans le canal vocal
   (async () => {
+    try {
+      console.log(`[VOICE] Fetching membres existants pour canal ${id}...`);
+      const res = await fetch(`/api/channels/${id}/voice_members`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('likoo_token')}` }
+      });
+      const members = await res.json();
+      console.log(`[VOICE] ✓ Membres existants: ${members.length}`, members);
+      
+      // Ajouter les membres existants (sauf moi-même)
+      members.forEach(m => {
+        if (m.user_id !== S.me.id) {
+          console.log(`[VOICE] Ajout du membre: ${m.name} (${m.user_id})`);
+          S.inVoice.members.push({
+            user_id: m.user_id,
+            name: m.name || 'Utilisateur',
+            avatar: m.avatar || '👤',
+            color: m.color || '#94a3b8',
+            status: 'online',
+            role: 'Membre',
+            muted: false,
+            streaming: false
+          });
+        }
+      });
+      
+      renderVoiceControls();
+    } catch(e) {
+      console.error('[VOICE] ❌ Erreur fetching members:', e);
+    }
+    
+    // Initialiser WebRTC après avoir récupéré les membres existants
+    console.log(`[VOICE] Initialisation WebRTC...`);
     const success = await WebRTC.init();
     if (success) {
-      // Notifier les autres utilisateurs et créer des connexions
+      console.log(`[VOICE] ✓ WebRTC initialisé, ${WebRTC.localStream.getAudioTracks().length} pistes audio`);
+      
+      // Notifier les autres utilisateurs
+      console.log(`[VOICE] Émission voice_channel_join`);
       socket.emit('voice_channel_join', {
         user_id: S.me.id,
         channel_id: id,
         server_id: S.activeSrv.id
       });
       
-      // Se connecter à tous les autres utilisateurs du canal
-      voiceMembers.forEach(m => {
-        if (m.user_id !== S.me.id) {
-          setTimeout(() => WebRTC.addPeer(m.user_id), 500);
-        }
+      // Se connecter aux membres existants
+      const peersToAdd = S.inVoice.members.filter(m => m.user_id !== S.me.id);
+      console.log(`[VOICE] Création ${peersToAdd.length} connexions peer...`);
+      peersToAdd.forEach(m => {
+        setTimeout(() => {
+          console.log(`[VOICE] addPeer(${m.user_id})`);
+          WebRTC.addPeer(m.user_id);
+        }, 500);
       });
+    } else {
+      console.error(`[VOICE] ❌ WebRTC init failed`);
     }
   })();
 }
@@ -1882,7 +2321,7 @@ function renderVoiceControls(){
         
         <div class="voice-members-list">
           <div class="voice-member-item voice-self">
-            <div class="vm-avatar" style="background:var(--accent)30;border:2px solid var(--accent);">
+            <div class="vm-avatar" style="background:var(--accent)30;border:2px solid var(--accent);transition:border-color 0.15s ease, border-width 0.15s ease;">
               <span>${S.me.avatar?.charAt(0) === 'h' ? '👤' : (S.me.avatar || '👤')}</span>
             </div>
             <div class="vm-info">
@@ -1966,19 +2405,22 @@ function openServerSettings(){
   if(!S.activeSrv)return;
   const isOwner = S.activeSrv.owner_id === S.me.id;
   if(!isOwner){
-    alert('Seul le propriétaire du serveur peut modifier les paramètres');
+    alert('Seul le propriétaire du serveur peut modifier les parametres');
     return;
   }
   
-  // Charger les données FRAÎCHES du serveur depuis l'API
-  console.log('📥 Chargement des données fraîches du serveur...');
+  // Ajouter le bouton tab invitations s'il n'existe pas
+  ensureInvitesTabButton();
+  
+  // Charger les données FRAI`ES du serveur depuis l'API
+  console.log('[INFO] Chargement des donnees fraiches du serveur...');
   fetch(`/api/servers/${S.activeSrv.id}`, {
     headers: { 'Authorization': `Bearer ${localStorage.getItem('likoo_token')}` }
   })
   .then(r => r.json())
   .then(data => {
-    console.log('✅ Données du serveur mises à jour:', data);
-    // Mettre à jour S.activeSrv avec les données fraîches
+    console.log('[OK] Donnees du serveur mises a jour:', data);
+    // Mettre a jour S.activeSrv avec les donnees fraiches
     S.activeSrv = data;
     
     // Remplir le formulaire
@@ -1990,9 +2432,26 @@ function openServerSettings(){
     openModal('modalServerSettings');
   })
   .catch(err => {
-    console.error('❌ Erreur lors du chargement du serveur:', err);
-    alert('Erreur lors du chargement des paramètres');
+    console.error('[ERROR] Erreur lors du chargement du serveur:', err);
+    alert('Erreur lors du chargement des parametres');
   });
+}
+
+function ensureInvitesTabButton() {
+  if (q('#tabBtnInvites')) return; // Existe deja
+  
+  const btnChannels = q('#tabBtnChannels');
+  if (!btnChannels) return;
+  
+  const newBtn = document.createElement('div');
+  newBtn.id = 'tabBtnInvites';
+  newBtn.className = 'srv-settings-tab-btn';
+  newBtn.style.cssText = 'padding:14px 18px;cursor:pointer;color:var(--text3);font-size:15px;transition:all .15s;border-left:3px solid transparent';
+  newBtn.textContent = 'Invitations';
+  newBtn.onclick = () => switchServerTab('invites');
+  
+  // Inserer apres le bouton channels
+  btnChannels.parentNode.insertBefore(newBtn, btnChannels.nextSibling);
 }
 
 function updateSettingsButtonVisibility(){
@@ -2034,6 +2493,8 @@ function switchServerTab(tabName) {
     loadServerMembers();
   } else if (tabName === 'channels') {
     loadServerChannels();
+  } else if (tabName === 'invites') {
+    loadServerInvites();
   }
 }
 
@@ -2468,7 +2929,13 @@ function insEmoji(e){const i=q('#msgInput');if(i){i.value+=e;i.focus();}q('#emoj
 // MODALS
 // ═══════════════════════════════════════════════
 function openModal(id){q(`#${id}`)?.classList.add('open');}
-function closeModal(id){q(`#${id}`)?.classList.remove('open');}
+function closeModal(id){
+  // Arrêter le test du micro si on ferme les paramètres
+  if (id === 'modalSettings' && micTestActive) {
+    toggleMicTest();
+  }
+  q(`#${id}`)?.classList.remove('open');
+}
 function openSettings(){
   if(S.me){
     q('#setName').value=S.me.name;
@@ -2485,6 +2952,10 @@ function openSettings(){
       }
     }
   }
+  // Charger les appareils audio
+  enumerateAudioDevices();
+  // Charger la sensibilité du micro sauvegardée
+  loadMicSensitivity();
   openModal('modalSettings');
 }
 
@@ -2515,7 +2986,7 @@ function saveSettings(){
     save();
     updateNavAv();
     q('#navName').innerHTML = `<div>${S.me.name}</div><div style="font-size:11px;opacity:0.7">#${S.me.tag}</div>`;
-    renderServers();
+    loadServers();
     renderMembers();
   }
   localStorage.setItem('likoo_theme',S.theme);
@@ -2548,6 +3019,187 @@ function setStatus(el){
     },
     body: JSON.stringify({status: s})
   }).catch(err => console.error('Erreur sauvegarde statut:', err));
+}
+
+// ═══════════════════════════════════════════════
+// SETTINGS: AUDIO DEVICES
+// ═══════════════════════════════════════════════
+async function enumerateAudioDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInputs = devices.filter(d => d.kind === 'audioinput');
+    const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+    
+    const inputSelect = q('#audioInputSelect');
+    const outputSelect = q('#audioOutputSelect');
+    
+    // Populate microphones
+    inputSelect.innerHTML = '<option value="">-- Défaut --</option>';
+    audioInputs.forEach(device => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = device.label || `Microphone ${audioInputs.indexOf(device) + 1}`;
+      inputSelect.appendChild(option);
+    });
+    
+    // Populate speakers
+    outputSelect.innerHTML = '<option value="">-- Défaut --</option>';
+    audioOutputs.forEach(device => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = device.label || `Haut-parleur ${audioOutputs.indexOf(device) + 1}`;
+      outputSelect.appendChild(option);
+    });
+    
+    // Restore saved selections
+    const savedInput = localStorage.getItem('likoo_audioInput');
+    const savedOutput = localStorage.getItem('likoo_audioOutput');
+    if (savedInput) inputSelect.value = savedInput;
+    if (savedOutput) outputSelect.value = savedOutput;
+    
+    console.log(`[AUDIO] Enumérés: ${audioInputs.length} micros, ${audioOutputs.length} speakers`);
+  } catch(e) {
+    console.error('[AUDIO] Erreur enumeration:', e);
+  }
+}
+
+function setAudioInput(deviceId) {
+  localStorage.setItem('likoo_audioInput', deviceId);
+  console.log(`[AUDIO] Microphone sélectionné: ${deviceId}`);
+}
+
+function setAudioOutput(deviceId) {
+  localStorage.setItem('likoo_audioOutput', deviceId);
+  console.log(`[AUDIO] Haut-parleur sélectionné: ${deviceId}`);
+}
+
+function refreshAudioDevices() {
+  console.log('[AUDIO] Rafraîchissement des appareils...');
+  enumerateAudioDevices();
+  showToast('✓ Appareils rafraîchis');
+}
+
+// ═══════════════════════════════════════════════
+// MIC SENSITIVITY TEST
+// ═══════════════════════════════════════════════
+let micTestActive = false;
+let micTestStream = null;
+let micTestContext = null;
+let micTestAnalyser = null;
+let micTestInterval = null;
+
+async function toggleMicTest() {
+  const btn = document.getElementById('micTestBtn');
+  const bar = document.getElementById('micTestBar');
+  
+  if (!micTestActive) {
+    // Démarrer le test
+    try {
+      console.log('[MIC TEST] Démarrage...');
+      const selectedInput = localStorage.getItem('likoo_audioInput') || '';
+      let constraints = { audio: true };
+      if (selectedInput) {
+        constraints = { audio: { deviceId: { exact: selectedInput } } };
+      }
+      
+      micTestStream = await navigator.mediaDevices.getUserMedia(constraints);
+      micTestContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      if (micTestContext.state === 'suspended') {
+        await micTestContext.resume();
+      }
+      
+      const source = micTestContext.createMediaStreamSource(micTestStream);
+      micTestAnalyser = micTestContext.createAnalyser();
+      micTestAnalyser.fftSize = 256;
+      micTestAnalyser.smoothingTimeConstant = 0.3;
+      source.connect(micTestAnalyser);
+      
+      const dataArray = new Uint8Array(micTestAnalyser.frequencyBinCount);
+      
+      micTestInterval = setInterval(() => {
+        micTestAnalyser.getByteTimeDomainData(dataArray);
+        
+        // Calculer RMS
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const normalized = (dataArray[i] - 128) / 128;
+          sum += normalized * normalized;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        
+        // Mettre à jour la barre (0-100%) - Multiplier par 200 pour plus de visibilité
+        const percentage = Math.min(rms * 200, 100);
+        bar.style.width = percentage + '%';
+      }, 50);
+      
+      micTestActive = true;
+      btn.textContent = '⏸ Arrêter';
+      btn.style.background = 'var(--red)';
+      console.log('[MIC TEST] ✓ Démarré');
+    } catch(err) {
+      console.error('[MIC TEST] Erreur:', err);
+      showToast('❌ Erreur d\'accès au microphone', 'error');
+    }
+  } else {
+    // Arrêter le test
+    console.log('[MIC TEST] Arrêt...');
+    if (micTestInterval) {
+      clearInterval(micTestInterval);
+      micTestInterval = null;
+    }
+    if (micTestStream) {
+      micTestStream.getTracks().forEach(track => track.stop());
+      micTestStream = null;
+    }
+    if (micTestContext) {
+      micTestContext.close();
+      micTestContext = null;
+    }
+    
+    bar.style.width = '0%';
+    micTestActive = false;
+    btn.textContent = '▶ Tester';
+    btn.style.background = '';
+    console.log('[MIC TEST] ✓ Arrêté');
+  }
+}
+
+function updateMicSensitivity(value) {
+  const displayValue = parseFloat(value).toFixed(3);
+  document.getElementById('micSensitivityValue').textContent = displayValue;
+  localStorage.setItem('likoo_micSensitivity', value);
+  
+  // Mettre à jour la position de la ligne de seuil dans la barre
+  const thresholdLine = document.getElementById('micTestThreshold');
+  if (thresholdLine) {
+    // Convertir le seuil (0.005-0.15) en position % (0-100%)
+    // On utilise la même formule que pour la barre: rms * 200 = percentage
+    // Donc threshold * 200 = position
+    const position = Math.min(parseFloat(value) * 200, 100);
+    thresholdLine.style.left = position + '%';
+  }
+  
+  console.log(`[MIC] Sensibilité réglée à: ${displayValue}`);
+}
+
+// Charger la sensibilité sauvegardée au démarrage des paramètres
+function loadMicSensitivity() {
+  const saved = localStorage.getItem('likoo_micSensitivity') || '0.03';
+  const slider = document.getElementById('micSensitivity');
+  const display = document.getElementById('micSensitivityValue');
+  const thresholdLine = document.getElementById('micTestThreshold');
+  
+  if (slider) {
+    slider.value = saved;
+    display.textContent = parseFloat(saved).toFixed(3);
+    
+    // Mettre à jour la position de la ligne de seuil
+    if (thresholdLine) {
+      const position = Math.min(parseFloat(saved) * 200, 100);
+      thresholdLine.style.left = position + '%';
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -2797,6 +3449,193 @@ document.addEventListener('click',e=>{
   if(!e.target.closest('#emojiPicker')&&!e.target.closest('.inp-btn'))q('#emojiPicker')?.classList.remove('open');
   if(e.target.classList.contains('overlay'))e.target.classList.remove('open');
 });
+
+// ═══════════════════════════════════════════════
+// INVITES - Codes d'invitation
+// ═══════════════════════════════════════════════
+
+async function loadServerInvites() {
+  if (!S.activeSrv) return;
+  const token = localStorage.getItem('likoo_token');
+  if (!token) return;
+  
+  try {
+    const res = await fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}/invites`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const invites = await res.json();
+    
+    const list = q('#invitesList');
+    if (!list) return;
+    
+    list.innerHTML = '';
+    
+    if (!invites || invites.length === 0) {
+      list.innerHTML = '<p style="color:var(--text3);font-size:15px">Aucune invitation creee</p>';
+      return;
+    }
+    
+    invites.forEach(inv => {
+      const invEl = document.createElement('div');
+      invEl.style.cssText = 'padding:16px;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;display:flex;justify-content:space-between;align-items:center';
+      
+      const info = document.createElement('div');
+      const code = document.createElement('code');
+      code.textContent = inv.code;
+      code.style.cssText = 'background:rgba(94,109,132,.2);padding:4px 8px;border-radius:4px;font-weight:600;color:var(--accent)';
+      
+      const uses = document.createElement('p');
+      uses.textContent = `Utilisations: ${inv.uses}${inv.max_uses ? '/' + inv.max_uses : ''}`;
+      uses.style.cssText = 'color:var(--text3);font-size:13px;margin:6px 0 0 0';
+      
+      info.appendChild(code);
+      info.appendChild(uses);
+      
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:8px';
+      
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'btn btn-ghost';
+      copyBtn.style.cssText = 'padding:8px 12px;font-size:13px';
+      copyBtn.textContent = 'Copier';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(inv.code);
+        copyBtn.textContent = 'Copie!';
+        setTimeout(() => copyBtn.textContent = 'Copier', 2000);
+      };
+      
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn btn-danger';
+      delBtn.style.cssText = 'padding:8px 12px;font-size:13px;background:#f87171;color:#7f1d1d';
+      delBtn.textContent = 'Supprimer';
+      delBtn.onclick = () => deleteInvite(inv.id);
+      
+      actions.appendChild(copyBtn);
+      actions.appendChild(delBtn);
+      
+      invEl.appendChild(info);
+      invEl.appendChild(actions);
+      
+      list.appendChild(invEl);
+    });
+  } catch(e) {
+    console.error('loadServerInvites error:', e);
+  }
+}
+
+async function createNewInvite() {
+  if (!S.activeSrv) {
+    alert('Aucun serveur selectione');
+    return;
+  }
+  
+  console.log('[INVITE] Creating invite for server:', S.activeSrv.id, S.activeSrv.name);
+  
+  const token = localStorage.getItem('likoo_token');
+  if (!token) {
+    alert('Non authentifie');
+    return;
+  }
+  
+  try {
+    const res = await fetch(`http://localhost:5000/api/servers/${S.activeSrv.id}/invites`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      alert('Erreur: ' + err.error);
+      return;
+    }
+    
+    const inviteData = await res.json();
+    console.log('[INVITE] Invitation created:', inviteData);
+    alert('Invitation creee avec succes! Code: ' + inviteData.code);
+    loadServerInvites();
+  } catch(e) {
+    console.error('createNewInvite error:', e);
+    alert('Erreur lors de la creation de l\'invitation');
+  }
+}
+
+async function deleteInvite(inviteId) {
+  if (!confirm('Etes-vous sur de vouloir supprimer cette invitation?')) return;
+  
+  const token = localStorage.getItem('likoo_token');
+  if (!token) {
+    alert('Non authentifie');
+    return;
+  }
+  
+  try {
+    const res = await fetch(`http://localhost:5000/api/servers/invites/${inviteId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      alert('Erreur: ' + err.error);
+      return;
+    }
+    
+    alert('Invitation supprimee');
+    loadServerInvites();
+  } catch(e) {
+    console.error('deleteInvite error:', e);
+    alert('Erreur lors de la suppression');
+  }
+}
+
+// Modal pour rejoindre un serveur via code
+function openJoinServerModal() {
+  const code = prompt('Entrez le code d\'invitation:');
+  if (!code || !code.trim()) return;
+  
+  joinServerByCode(code.trim());
+}
+
+async function joinServerByCode(code) {
+  console.log('[INVITE] Attempting to join with code:', code);
+  const token = localStorage.getItem('likoo_token');
+  if (!token) {
+    alert('Non authentifie');
+    return;
+  }
+  
+  try {
+    const res = await fetch(`http://localhost:5000/api/servers/invite/${code}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      if (res.status === 410) {
+        alert('Cette invitation n\'est plus valide');
+      } else {
+        alert('Erreur: ' + err.error);
+      }
+      return;
+    }
+    
+    const data = await res.json();
+    console.log('[INVITE] Joined server:', data.server.id, data.server.name);
+    alert('Vous avez rejoint ' + data.server.name);
+    
+    // Recharger les serveurs
+    await loadServers();
+    renderNav();
+  } catch(e) {
+    console.error('joinServerByCode error:', e);
+    alert('Erreur lors de la connexion au serveur');
+  }
+}
 
 // ═══════════════════════════════════════════════
 // TITLEBAR & WINDOW CONTROLS (Electron)
