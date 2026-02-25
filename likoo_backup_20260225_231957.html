@@ -682,8 +682,8 @@
 </div>
 
 <!-- MODAL: USER PROFILE -->
-<div class="overlay" id="modalUserProfile">
-  <div class="modal" style="max-width:380px;width:100%;padding:0;background:var(--bg);border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);align-items:flex-start;margin-top:60px">
+<div class="overlay" id="modalUserProfile" style="display:none;align-items:flex-start;padding-top:60px">
+  <div class="modal" style="max-width:380px;width:100%;padding:0;background:var(--bg);border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)">
     <!-- Banner background -->
     <div style="height:120px;background:linear-gradient(135deg, var(--accent)40 0%, var(--accent2)30 100%);position:relative">
       <div id="userProfileAvatar" style="position:absolute;bottom:-35px;left:24px;width:90px;height:90px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:48px;border:5px solid var(--bg);flex-shrink:0"></div>
@@ -1528,16 +1528,6 @@ function renderChannels(){
 // ═══════════════════════════════════════════════
 // RENDER MEMBERS
 // ═══════════════════════════════════════════════
-function mkMemGroup(label, list) {
-  return `<div class="mem-lbl">${label}</div>${list.map((m, idx) => {
-    const userId = m.id || m.user_id || idx;
-    return `<div class="mem-item" data-user-id="${userId}" data-user-name="${(m.name || '').replace(/"/g, '&quot;')}" style="cursor:pointer">
-      <div class="mem-av" style="background:${m.color}18">${formatAvatar(m.av||m.avatar)}<div class="mem-dot ${m.status}" style="border-color:var(--bg2)"></div></div>
-      <div><div class="mem-name">${m.name}</div><div class="mem-role">${m.role||''}</div></div>
-    </div>`;
-  }).join('')}`;
-}
-
 function renderMembers(){
   const el=q('#membersList'); if(!el)return;
   const srv=S.activeSrv; if(!srv){el.innerHTML='';return;}
@@ -1556,51 +1546,77 @@ function renderMembers(){
   // Attacher les événements click aux éléments membres
   el.querySelectorAll('.mem-item').forEach(item => {
     item.addEventListener('click', function(e) {
-      console.log('🖱️ CLICK DÉTECTÉ sur membre!', this);
       e.stopPropagation();
-      viewUserProfileFromData(this);
-    });
-  });
-}
-function toggleMembers(){
-  S.membersVisible=!S.membersVisible;
-  const z=q('#zoneRight');
-  z.style.display=S.membersVisible?'flex':'none';
-}
-
-// ═══════════════════════════════════════════════
-// RENDER CHAT
-// ═══════════════════════════════════════════════
-function renderChat(){
-  const key=activeKey();
-  const msgs=key?(S.messages[key]||[]):[];
-  const el=q('#messages'); if(!el)return;
-  if(!key||msgs.length===0){
-    const ch=S.activeSrv?.channels.find(c=>c.id===S.activeCh);
-    el.innerHTML=`<div class="empty-chat">
-      <div class="big">${S.view==='dm'?'💬':'#'}</div>
-      <h3>${S.view==='dm'?'Début de la conversation':'#'+(ch?.name||'salon')}</h3>
-      <p style="font-size:13px">${key?'Soyez le premier à écrire ici !':'Sélectionnez un salon.'}</p>
-    </div>`;
-    return;
-  }
-  const compact=S.compact;
-  el.innerHTML=msgs.map((m,i)=>{
-    if(m.system)return`<div class="sys-line">${m.content}</div>`;
-    const prev=msgs[i-1];
-    const same=prev&&!prev.system&&prev.author?.name===m.author?.name;
-    const auth=m.author||S.me;
-    const isMe=auth.name===S.me.name;
-    const reacts=(m.reactions||[]).map(r=>`<span class="react-chip ${r.mine?'mine':''}" onclick="toggleReact('${key}',${m.id},'${r.e}')">${r.e} ${r.c}</span>`).join('');
-    const body=m.file
-      ?(m.file.type.startsWith('image/')
-        ?`<img src="${m.file.data}" class="img-msg">`
-        :`<div class="file-chip">📄 <span>${m.file.name}</span><span style="color:var(--text4);font-size:11px">${m.file.size}</span></div>`)
-      :`<div class="msg-content">${String(m.content).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
-    const acts=`<div class="msg-acts">
-      <button class="msg-act-btn" onclick="quickReact('${key}',${m.id})">😊</button>
-      <button class="msg-act-btn" onclick="quickReact('${key}',${m.id})">👍</button>
-      <button class="msg-act-btn" onclick="quickReact('${key}',${m.id})">😂</button>
+      function viewUserProfileFromData(el) {
+        const userId = String(el.getAttribute('data-user-id') || '').trim();
+        const userName = String(el.getAttribute('data-user-name') || '').trim().toLowerCase();
+        console.log('🔍 Tentative d\'afficher le profil de l\'utilisateur:', userId, el);
+  
+        if (!userId) {
+          console.warn('❌ Pas d\'ID utilisateur trouvé');
+          return;
+        }
+  
+        const normalizeList = (list) => {
+          if (!list) return [];
+          return Array.isArray(list) ? list : Object.values(list);
+        };
+        const matchId = (m) => {
+          if (!m) return false;
+          const ids = [m.id, m.user_id, m.userId, m.uid];
+          return ids.some(v => v !== undefined && v !== null && String(v) === userId);
+        };
+        const matchName = (m) => {
+          if (!userName || !m) return false;
+          const name = String(m.name || m.username || '').trim().toLowerCase();
+          return name === userName;
+        };
+        const findByNameIfUnique = (list) => {
+          if (!userName) return null;
+          const matches = list.filter(matchName);
+          return matches.length === 1 ? matches[0] : null;
+        };
+  
+        let user = null;
+  
+        // Chercher dans le serveur actif
+        if (S.activeSrv && S.activeSrv.members) {
+          const list = normalizeList(S.activeSrv.members);
+          user = list.find(matchId) || findByNameIfUnique(list);
+          if (user) {
+            console.log('✅ Utilisateur trouvé dans le serveur actif:', user);
+          }
+        }
+  
+        // Chercher dans le canal vocal
+        if (!user && S.inVoice && S.inVoice.members) {
+          const list = normalizeList(S.inVoice.members);
+          user = list.find(matchId) || findByNameIfUnique(list);
+          if (user) {
+            console.log('✅ Utilisateur trouvé dans le canal vocal:', user);
+          }
+        }
+  
+        // Chercher dans tous les serveurs
+        if (!user && Array.isArray(S.servers)) {
+          for (let srv of S.servers) {
+            const list = normalizeList(srv.members);
+            const found = list.find(matchId) || findByNameIfUnique(list);
+            if (found) {
+              user = found;
+              console.log('✅ Utilisateur trouvé dans un autre serveur:', user);
+              break;
+            }
+          }
+        }
+  
+        if (!user) {
+          console.warn('❌ Utilisateur non trouvé avec l\'ID:', userId);
+          return;
+        }
+  
+        viewUserProfile(user);
+      }
       ${isMe?`<button class="msg-act-btn" onclick="editMsg('${key}',${m.id})">✏️</button>`:''}
       ${isMe?`<button class="msg-act-btn" style="color:var(--red)" onclick="delMsg('${key}',${m.id})">🗑</button>`:''}
     </div>`;
@@ -2699,8 +2715,6 @@ function switchUserTab(tabName) {
 function viewUserProfileFromData(el) {
   const userId = el.getAttribute('data-user-id');
   console.log('🔍 Tentative d\'afficher le profil de l\'utilisateur:', userId, el);
-  console.log('🗂️ S.activeSrv:', S.activeSrv);
-  console.log('🗂️ S.activeSrv.members:', S.activeSrv?.members);
   
   if (!userId) {
     console.warn('❌ Pas d\'ID utilisateur trouvé');
@@ -2711,7 +2725,7 @@ function viewUserProfileFromData(el) {
   
   // Chercher dans le serveur actif
   if (S.activeSrv && S.activeSrv.members) {
-    user = S.activeSrv.members.find(m => String(m.id) === String(userId) || String(m.user_id) === String(userId));
+    user = S.activeSrv.members.find(m => m.id === userId);
     if (user) {
       console.log('✅ Utilisateur trouvé dans le serveur actif:', user);
     }
@@ -2719,7 +2733,7 @@ function viewUserProfileFromData(el) {
   
   // Chercher dans le canal vocal
   if (!user && S.inVoice && S.inVoice.members) {
-    user = S.inVoice.members.find(m => String(m.id) === String(userId) || String(m.user_id) === String(userId));
+    user = S.inVoice.members.find(m => m.id === userId || m.user_id === userId);
     if (user) {
       console.log('✅ Utilisateur trouvé dans le canal vocal:', user);
     }
@@ -2728,7 +2742,7 @@ function viewUserProfileFromData(el) {
   // Chercher dans tous les serveurs
   if (!user) {
     for (let srv of S.servers) {
-      const found = srv.members?.find(m => String(m.id) === String(userId) || String(m.user_id) === String(userId));
+      const found = srv.members?.find(m => m.id === userId);
       if (found) {
         user = found;
         console.log('✅ Utilisateur trouvé dans un autre serveur:', user);

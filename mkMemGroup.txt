@@ -1,0 +1,9 @@
+function mkMemGroup(label, list) {
+  return `<div class="mem-lbl">${label}</div>${list.map((m, idx) => {
+    const userId = m.id || m.user_id || idx;
+    return `<div class="mem-item" data-user-id="${userId}" data-user-name="${(m.name || '').replace(/"/g, '&quot;')}" style="cursor:pointer">
+      <div class="mem-av" style="background:${m.color}18">${formatAvatar(m.av||m.avatar)}<div class="mem-dot ${m.status}" style="border-color:var(--bg2)"></div></div>
+      <div><div class="mem-name">${m.name}</div><div class="mem-role">${m.role||''}</div></div>
+    </div>`;
+  }).join('')}`;
+}

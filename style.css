@@ -764,6 +764,24 @@ body{display:flex;flex-direction:column;height:100vh;}
   font-weight: 600;
 }
 
+.user-settings-tab-btn {
+  border-left: 3px solid transparent;
+  color: var(--text3);
+  transition: all 0.15s;
+}
+
+.user-settings-tab-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text2);
+}
+
+.user-settings-tab-btn.active {
+  border-left-color: var(--accent);
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .perm-checkbox {
   width: 16px;
   height: 16px;
