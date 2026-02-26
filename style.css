@@ -289,19 +289,19 @@ body{display:flex;flex-direction:column;height:100vh;}
 .resize-handle-v-right.active{background:var(--accent);}
 .zone-center{flex:1;}
 
-/* Drop-highlight overlay */
-.zone.drop-target::after{
-  content:'Déposer ici';
-  position:absolute;inset:4px;
-  background:var(--zone-hl);
-  border:2px dashed var(--zone-border);
+/* Drop feedback with real DOM element */
+.drop-rect{
+  position:absolute;
+  inset:0;
+  border:2px solid var(--accent);
   border-radius:12px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:13px;font-weight:700;color:var(--accent);
-  pointer-events:none;z-index:100;
-  animation:pulse .8s ease infinite;
+  pointer-events:none;
+  z-index:50;
+  opacity:0.4;
+  animation:drop-pulse .6s ease infinite;
+  box-sizing:border-box;
 }
-@keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}
+@keyframes drop-pulse{0%,100%{opacity:0.2}50%{opacity:0.5}}
 
 /* ══════════════════════════════════════
    MODULE BLOCKS (les blocs qu'on déplace)
@@ -321,7 +321,9 @@ body{display:flex;flex-direction:column;height:100vh;}
 }
 .module-header:active{cursor:grabbing;}
 .module-header:hover{background:var(--bg3);}
-.module-header .drag-handle{color:var(--text4);font-size:14px;margin-right:2px;pointer-events:none;}
+.module-header .drag-handle{color:var(--text4);font-size:14px;margin-right:2px;pointer-events:auto;cursor:grab;transition:color .2s;user-select:none;}
+.module-header .drag-handle:hover{color:var(--accent);cursor:grab;}
+.module-header .drag-handle:active{cursor:grabbing;}
 .module-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:700;
   color:var(--text);flex:1;pointer-events:none;transition:color .35s;}
 .module-icon{font-size:16px;pointer-events:none;}
@@ -395,6 +397,9 @@ body{display:flex;flex-direction:column;height:100vh;}
   cursor:pointer;color:var(--text3);font-size:15px;
   display:flex;align-items:center;justify-content:center;transition:all .15s;}
 .topbar-btn:hover{background:var(--bg3);color:var(--text2);}
+.chat-topbar .drag-handle{color:var(--text4);font-size:14px;margin-right:2px;pointer-events:auto;cursor:grab;transition:color .2s;user-select:none;}
+.chat-topbar .drag-handle:hover{color:var(--accent);cursor:grab;}
+.chat-topbar .drag-handle:active{cursor:grabbing;}
 .messages{flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;
   gap:2px;scrollbar-width:thin;scrollbar-color:var(--bg4) transparent;}
 .messages::-webkit-scrollbar{width:4px;}
@@ -874,4 +879,26 @@ input[type="text"],
 textarea,
 input[type="color"] {
   font-family: inherit;
+}
+/* ══════════════════════════════════════
+   DRAG & DROP STYLING
+══════════════════════════════════════ */
+.drag-handle {
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.drag-handle:hover {
+  background-color: var(--accent);
+  color: var(--bg);
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.is-dragging {
+  opacity: 0.6 !important;
 }

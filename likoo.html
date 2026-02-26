@@ -61,7 +61,7 @@
   <!-- ZONE LEFT -->
   <div class="zone zone-left" id="zoneLeft" ondragover="onZoneDragOver(event,'left')" ondragleave="onZoneDragLeave(event,'left')" ondrop="onZoneDrop(event,'left')">
     <!-- channels by default -->
-    <div class="module" id="mod-channels" draggable="true" ondragstart="onModDragStart(event,'mod-channels')" ondragend="onModDragEnd()">
+    <div class="module" id="mod-channels" draggable="true" ondragstart="onModDragStart(event,'mod-channels')" ondragend="onModDragEnd()" onmousedown="onModMouseDown(event)">
       <div class="module-header">
         <span class="drag-handle">⋮⋮</span>
         <span class="module-icon" id="chModIcon">#</span>
@@ -74,11 +74,12 @@
   </div>
 
   <!-- ZONE CENTER -->
-  <div class="zone zone-center" id="zoneCenter">
+  <div class="zone zone-center" id="zoneCenter" ondragover="onZoneDragOver(event,'center')" ondragleave="onZoneDragLeave(event,'center')" ondrop="onZoneDrop(event,'center')">
     <!-- chat by default -->
-    <div class="module" id="mod-chat" draggable="true" ondragstart="onModDragStart(event,'mod-chat')" ondragend="onModDragEnd()">
+    <div class="module" id="mod-chat" draggable="true" ondragstart="onModDragStart(event,'mod-chat')" ondragend="onModDragEnd()" onmousedown="onModMouseDown(event)">
       <!-- Chat topbar -->
       <div class="chat-topbar">
+        <span class="drag-handle" title="Glisser pour déplacer">⋮⋮</span>
         <span class="chat-icon" id="chatIcon">#</span>
         <span class="chat-name" id="chatName">Likoo</span>
         <span class="chat-desc" id="chatDesc"></span>
@@ -113,7 +114,7 @@
   <!-- ZONE RIGHT -->
   <div class="zone zone-right" id="zoneRight" ondragover="onZoneDragOver(event,'right')" ondragleave="onZoneDragLeave(event,'right')" ondrop="onZoneDrop(event,'right')">
     <!-- members by default -->
-    <div class="module" id="mod-members" draggable="true" ondragstart="onModDragStart(event,'mod-members')" ondragend="onModDragEnd()">
+    <div class="module" id="mod-members" draggable="true" ondragstart="onModDragStart(event,'mod-members')" ondragend="onModDragEnd()" onmousedown="onModMouseDown(event)">
       <div class="module-header">
         <span class="drag-handle">⋮⋮</span>
         <span class="module-icon">👥</span>
@@ -3716,7 +3717,16 @@ function applyLayoutVal(l){
     if(mod&&mod.parentElement!==zoneEl)zoneEl.appendChild(mod);
   }
   if(cfg.left)moveToZone(cfg.left,zl); else zl.style.display='none';
-  moveToZone(cfg.center,zc);
+  
+  // CHAT: Check if user has set a custom position for the chat
+  const chatCustomZone = localStorage.getItem('likoo_chat_zone');
+  if(chatCustomZone){
+    const zoneMap = {left:zl, center:zc, right:zr};
+    moveToZone('mod-chat', zoneMap[chatCustomZone]);
+  } else {
+    moveToZone(cfg.center,zc);
+  }
+  
   if(cfg.right&&cfg.showRight)moveToZone(cfg.right,zr);
 
   S.membersVisible=cfg.showRight;
@@ -3752,10 +3762,25 @@ function createStyleEl(id){const s=document.createElement('style');s.id=id;docum
 // ═══════════════════════════════════════════════
 // DRAG & DROP MODULES (snap-to-zone)
 // ═══════════════════════════════════════════════
+function onModMouseDown(e){
+  S.dragInitElement = e.target;
+}
 function onModDragStart(e,id){
+  // Fall back to e.target if S.dragInitElement doesn't exist
+  const source = S.dragInitElement || e.target;
+  const dragHandle = source?.closest('.drag-handle');
+  if(!dragHandle){
+    // Explicitly disable drag
+    e.dataTransfer.effectAllowed = 'none';
+    e.preventDefault();
+    console.log('❌ Drag init NOT on handle element');
+    return;
+  }
+  
   S.dragMod=id;
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',id);
+  console.log('🎯 Drag started for:', id);
   setTimeout(()=>{const m=q('#'+id);if(m)m.classList.add('is-dragging');},0);
   // Highlight all droppable zones
   ['zoneLeft','zoneRight','zoneCenter'].forEach(zid=>{
@@ -3764,52 +3789,104 @@ function onModDragStart(e,id){
   });
 }
 function onModDragEnd(){
-  if(S.dragMod)q('#'+S.dragMod)?.classList.remove('is-dragging');
+  // Remove is-dragging from ALL modules, not just S.dragMod
+  document.querySelectorAll('.module.is-dragging').forEach(m=>m.classList.remove('is-dragging'));
   S.dragMod=null;
-  document.querySelectorAll('.zone').forEach(z=>{z.classList.remove('drop-target');z.removeAttribute('data-droppable');});
+  S.dragInitElement = null;
+  // Remove ALL drop-rect elements
+  document.querySelectorAll('.drop-rect').forEach(el=>el.remove());
 }
 function onZoneDragOver(e,zone){
-  if(!S.dragMod)return;
-  e.preventDefault();e.dataTransfer.dropEffect='move';
+  if(!S.dragMod){
+    console.log('⚠️ No dragMod set for zone:', zone);
+    return;
+  }
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
   const zoneIds={left:'zoneLeft',right:'zoneRight',center:'zoneCenter'};
   const z=q('#'+zoneIds[zone]);
-  if(z)z.classList.add('drop-target');
+  if(z){
+    // Remove any existing drop-rect first
+    z.querySelectorAll('.drop-rect').forEach(el=>el.remove());
+    // Create NEW drop-rect element
+    const rect=document.createElement('div');
+    rect.className='drop-rect';
+    z.appendChild(rect);
+  }
+  console.log('✅ Drag over zone:', zone, 'dragMod:', S.dragMod);
 }
 function onZoneDragLeave(e,zone){
+  if(!S.dragMod)return;
   const zoneIds={left:'zoneLeft',right:'zoneRight',center:'zoneCenter'};
   const z=q('#'+zoneIds[zone]);
-  // Only remove if truly leaving the zone element
-  if(z&&!z.contains(e.relatedTarget))z.classList.remove('drop-target');
+  // Only remove if truly leaving the zone element (not entering a child)
+  if(z&&!z.contains(e.relatedTarget)){
+    z.querySelectorAll('.drop-rect').forEach(el=>el.remove());
+  }
 }
 function onZoneDrop(e,zone){
   e.preventDefault();
   const modId=S.dragMod||e.dataTransfer.getData('text/plain');
+  console.log('🎯 DROP on zone:', zone, 'modId:', modId, 'S.dragMod:', S.dragMod);
   const zoneIds={left:'zoneLeft',right:'zoneRight',center:'zoneCenter'};
   const targetZone=q('#'+zoneIds[zone]);
-  if(!modId||!targetZone)return;
+  if(!modId||!targetZone){
+    console.log('❌ Drop cancelled: no modId or targetZone');
+    // Clean up drop-rect on cancel
+    document.querySelectorAll('.drop-rect').forEach(el=>el.remove());
+    return;
+  }
   const mod=q('#'+modId);
-  if(!mod)return;
+  if(!mod){
+    console.log('❌ Drop cancelled: module not found');
+    // Clean up drop-rect on cancel
+    document.querySelectorAll('.drop-rect').forEach(el=>el.remove());
+    return;
+  }
 
   // Don't drop on own zone
   if(mod.parentElement===targetZone){
-    document.querySelectorAll('.zone').forEach(z=>z.classList.remove('drop-target'));
+    console.log('ℹ️ Already in this zone, ignoring');
+    document.querySelectorAll('.drop-rect').forEach(el=>el.remove());
     return;
   }
+
+  console.log('✅ Moving', modId, 'from', mod.parentElement.id, 'to', targetZone.id);
 
   // Swap: if target zone already has a module, swap them
   const existingMod=targetZone.querySelector('.module');
   const sourceZone=mod.parentElement;
   if(existingMod&&sourceZone){
+    console.log('🔄 Swapping with', existingMod.id);
     sourceZone.appendChild(existingMod);
   }
   targetZone.appendChild(mod);
 
-  document.querySelectorAll('.zone').forEach(z=>z.classList.remove('drop-target'));
+  // Remove all drop-rect elements
+  document.querySelectorAll('.drop-rect').forEach(el=>el.remove());
   S.dragMod=null;
+
+  // Save custom position for CHAT module
+  if(modId === 'mod-chat'){
+    const zoneMap = {'zoneLeft':'left', 'zoneCenter':'center', 'zoneRight':'right'};
+    const newZone = zoneMap[targetZone.id];
+    if(newZone){
+      localStorage.setItem('likoo_chat_zone', newZone);
+      console.log('💾 Saved chat position:', newZone);
+    }
+  }
 
   // Update layout name to 'custom'
   document.querySelectorAll('.layout-card').forEach(c=>c.classList.remove('active'));
 }
+
+// Global cleanup listener - Remove ALL drop-rect elements
+document.addEventListener('dragend',()=>{
+  setTimeout(()=>document.querySelectorAll('.drop-rect').forEach(el=>el.remove()),0);
+});
+document.addEventListener('mouseup',()=>{
+  document.querySelectorAll('.drop-rect').forEach(el=>el.remove());
+});
 
 // ═══════════════════════════════════════════════
 // SERVER SETTINGS HELPERS
